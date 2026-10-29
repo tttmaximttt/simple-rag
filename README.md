@@ -67,7 +67,13 @@ PORT=8080 PUBLIC_URL=https://rag.example.com docker compose up -d --build
 
 Put a TLS reverse proxy (Caddy, nginx, Traefik) in front of it, so that the login cookie and API keys only travel over HTTPS. When you do:
 
-- Set `FORWARDED_ALLOW_IPS` to the proxy's address (for a proxy container on the same compose network, the docker network range such as `172.16.0.0/12`). The app only trusts `X-Forwarded-For` and `X-Forwarded-Proto` from those addresses, so the per-IP login lockout sees real client IPs. It defaults to `127.0.0.1,::1`; never set it to `*`, or anyone can fake their IP.
+- The app only trusts `X-Forwarded-For` and `X-Forwarded-Proto` from the addresses in `FORWARDED_ALLOW_IPS`, so the per-IP login lockout sees real client IPs. With docker compose it defaults to the docker range `172.16.0.0/12`: a proxy on the host (or a tunnel such as `cloudflared`) reaches the app from the docker network gateway, and the port is only published on `127.0.0.1`, so only host processes and this project's containers can connect from there. If docker gave the network another range (`docker network inspect`), or you publish the port on other interfaces, set it to the proxy's address instead. Never set it to `*`, or anyone can fake their IP.
+- Make the proxy overwrite `X-Forwarded-For` with the real client address. Otherwise a client can send its own header, fake its IP and get around the lockout. Caddy does this by default. In nginx, add:
+  ```nginx
+  proxy_set_header X-Forwarded-For $remote_addr;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header Host $host;
+  ```
 - Forward the original `Host` header (nginx: `proxy_set_header Host $host;`) or set `PUBLIC_URL`. Otherwise the cross-origin check rejects every change made from the web UI with 403.
 - Set `PUBLIC_URL` to the `https://` address so the login cookie is marked Secure even if the proxy doesn't send `X-Forwarded-Proto`.
 

@@ -5,3 +5,6 @@ data/
 .env
 import/*
 !import/.gitkeep
+.omc
+.pytest_cache
+AGENTS.md

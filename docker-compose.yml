@@ -11,9 +11,10 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       # Public HTTPS URL, e.g. https://rag.example.com (used in /v1/openapi.json for GPT Actions).
       PUBLIC_URL: ${PUBLIC_URL:-}
-      # Behind a reverse proxy, set this to the proxy's address (e.g. the docker network range,
-      # 172.16.0.0/12) so client IPs come from X-Forwarded-For. Never use "*": anyone could fake their IP.
-      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1,::1}
+      # Peers allowed to set X-Forwarded-For, so the login lockout sees real client IPs. A proxy on
+      # this host reaches the app from the docker network gateway, hence the docker range. Only host
+      # processes and this project's containers can connect from there. Never use "*": anyone could fake their IP.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-172.16.0.0/12}
     volumes:
       - rag-data:/data
       # Drop PDFs into ./import and click "Import from server folder" (read-only mount).

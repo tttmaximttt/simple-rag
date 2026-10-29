@@ -25,7 +25,11 @@ MAX_FAILURES, LOCKOUT_S = 5, 300
 MAX_FAILURE_LOGS = 20
 _SWEEP_AT = 1000  # sweep expired IPs once _failures grows past this
 _failures: dict[str, list[float]] = {}
+_next_sweep = _SWEEP_AT
 _failure_logs = [0.0, 0]  # window start, failures logged in it
+# Attempts not written one by one (over the cap, or rejected while locked out), summarized when the window ends:
+# window start, total, count per IP (at most _SWEEP_AT IPs).
+_unlogged: list = [0.0, 0, {}]
 _lock = threading.Lock()
 
 
@@ -52,31 +56,62 @@ def secret_hash(secret: str) -> str:
     return hashlib.sha256(secret.encode()).hexdigest()
 
 
-def _reserve_attempt(ip: str):
-    """Count this attempt as a failure up front, or raise LockedOut. Cleared on success."""
+def _reserve_attempt(ip: str) -> tuple[float, int]:
+    """Count this attempt as a failure up front, or raise LockedOut. Cleared on success.
+
+    Returns its timestamp and how many failures that makes for this IP."""
+    global _next_sweep
     now = time.time()
     cutoff = now - LOCKOUT_S
     with _lock:
-        if len(_failures) > _SWEEP_AT:
-            for k in [k for k, ts in _failures.items() if ts[-1] <= cutoff]:
+        if len(_failures) > _next_sweep:
+            for k in [k for k, ts in _failures.items() if not ts or ts[-1] <= cutoff]:
                 del _failures[k]
+            # Rescan only once it has doubled again, so many live IPs don't make every login a full scan.
+            _next_sweep = max(_SWEEP_AT, 2 * len(_failures))
         recent = [t for t in _failures.get(ip, []) if t > cutoff]
         if len(recent) >= MAX_FAILURES:
             _failures[ip] = recent
             raise LockedOut(ip)
         _failures[ip] = recent + [now]
+        return now, len(recent) + 1
 
 
-def _log_failure(message: str):
-    now = time.time()
+def _roll_window(now: float) -> str | None:
+    """Start a new log window if the current one is over. Returns the summary of what it didn't log. Holds _lock."""
+    if now - _failure_logs[0] < LOCKOUT_S:
+        return None
+    summary = None
+    if _unlogged[0] == _failure_logs[0] and _unlogged[1]:
+        by_ip = _unlogged[2]
+        top = max(by_ip, key=by_ip.get)
+        summary = (f"{_unlogged[1]} failed or locked-out logins from {len(by_ip)}"
+                   f"{'+' if len(by_ip) >= _SWEEP_AT else ''} IP(s) were not logged one by one "
+                   f"in the last window, most from {top} ({by_ip[top]})")
+    _failure_logs[:] = [now, 0]
+    _unlogged[:] = [now, 0, {}]
+    return summary
+
+
+def _log_failure(message: str | None, ip: str):
+    """Log a failed login, or count it once the window's cap is reached. message=None is an attempt rejected by
+    the lockout: those are never written one by one, so they can't use up the cap, only summarized."""
     with _lock:
-        if now - _failure_logs[0] >= LOCKOUT_S:
-            _failure_logs[:] = [now, 0]
-        _failure_logs[1] += 1
+        summary = _roll_window(time.time())
+        if message is not None:
+            _failure_logs[1] += 1
         n = _failure_logs[1]
-    if n <= MAX_FAILURE_LOGS:
+        write = message is not None and n <= MAX_FAILURE_LOGS
+        if not write:
+            _unlogged[1] += 1
+            by_ip = _unlogged[2]
+            if ip in by_ip or len(by_ip) < _SWEEP_AT:
+                by_ip[ip] = by_ip.get(ip, 0) + 1
+    if summary:
+        db.log("warn", "auth", summary)
+    if write:
         db.log("warn", "auth", message)
-    elif n == MAX_FAILURE_LOGS + 1:
+    elif message is not None and n == MAX_FAILURE_LOGS + 1:
         db.log("warn", "auth", f"further failed logins suppressed for up to {LOCKOUT_S // 60} minutes")
 
 
@@ -107,14 +142,31 @@ def reset_password(username: str) -> str:
 
 def login(username: str, password: str, ip: str) -> str | None:
     """Return a session token, or None on bad credentials. Raises LockedOut."""
-    _reserve_attempt(ip)
-    rows = db.rows("SELECT id, password_hash FROM users WHERE username=?", (username,))
-    ok = _verify_password(password, rows[0]["password_hash"] if rows else _DUMMY_HASH)
+    try:
+        reserved, n = _reserve_attempt(ip)
+    except LockedOut:
+        _log_failure(None, ip)
+        raise
+    try:
+        rows = db.rows("SELECT id, password_hash FROM users WHERE username=?", (username,))
+        ok = _verify_password(password, rows[0]["password_hash"] if rows else _DUMMY_HASH)
+    except Exception:
+        # An error isn't a wrong password: don't let it count toward the lockout.
+        with _lock:
+            if reserved in _failures.get(ip, []):
+                _failures[ip].remove(reserved)
+                if not _failures[ip]:
+                    del _failures[ip]
+        raise
     if not rows or not ok:
-        _log_failure(f"failed login for {username!r} from {ip}")
+        locked = f", {ip} locked out for {LOCKOUT_S // 60} minutes" if n >= MAX_FAILURES else ""
+        _log_failure(f"failed login for {username!r} from {ip}{locked}", ip)
         return None
     with _lock:
         _failures.pop(ip, None)
+        summary = _roll_window(time.time())
+    if summary:
+        db.log("warn", "auth", summary)
     token = secrets.token_urlsafe(32)
     now = time.time()
     db.execute("DELETE FROM sessions WHERE expires < ?", (now,))
