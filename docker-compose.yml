@@ -6,8 +6,12 @@ services:
     environment:
       # Optional: protect the UI and API with HTTP basic auth (user "admin").
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      # Public HTTPS URL, e.g. https://rag.example.com (used in /v1/openapi.json for GPT Actions).
+      PUBLIC_URL: ${PUBLIC_URL:-}
     volumes:
       - rag-data:/data
+      # Drop PDFs into ./import and click "Import from server folder" (read-only mount).
+      - ./import:/import:ro
     depends_on:
       postgres:
         condition: service_healthy

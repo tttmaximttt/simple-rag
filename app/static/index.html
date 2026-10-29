@@ -111,10 +111,27 @@
 
 <section id="view-documents" hidden>
   <h1>Documents</h1>
-  <label id="dropzone">
-    <input type="file" id="file-input" accept="application/pdf" multiple hidden>
-    Drop PDF files here or click to choose
-  </label>
+  <div id="dropzone">
+    <p>Drop PDF files or whole folders here</p>
+    <input type="file" id="file-input" accept="application/pdf,.pdf" multiple hidden>
+    <input type="file" id="folder-input" webkitdirectory multiple hidden>
+    <button type="button" id="pick-files">Choose files</button>
+    <button type="button" id="pick-folder">Choose folder</button>
+  </div>
+  <div id="upload-panel" hidden>
+    <p><strong id="upload-summary"></strong> <button type="button" class="small-btn" id="clear-uploads">Clear</button></p>
+    <ul id="upload-list"></ul>
+  </div>
+  <details class="more-import">
+    <summary>More ways to add documents</summary>
+    <label>PDF URLs, one per line
+      <textarea id="url-list" rows="4" placeholder="https://example.com/report.pdf"></textarea>
+    </label>
+    <button type="button" id="import-urls">Import URLs</button>
+    <p class="muted small">Server folder: put PDFs in the <code>import/</code> folder next to docker-compose.yml (mounted at <code>/import</code>), then:</p>
+    <button type="button" id="import-folder">Import from server folder</button>
+    <span class="result" id="import-result"></span>
+  </details>
   <table>
     <thead><tr><th>File</th><th>Status</th><th>Pages</th><th>Chunks</th><th>Size</th><th>Added</th><th></th></tr></thead>
     <tbody id="doc-rows"></tbody>
@@ -140,7 +157,7 @@
   <button id="reindex-all">Re-index all documents</button>
 
   <h2>API keys</h2>
-  <p class="muted small">Use these to call the API at <code id="api-base"></code> (see the README for endpoints).</p>
+  <p class="muted small">Use these for the HTTP API at <code id="api-base"></code> and the MCP server at <code id="mcp-url"></code> (for Claude and ChatGPT). Setup steps are in the README.</p>
   <form id="key-form" class="row">
     <input id="key-name" placeholder="Key name, e.g. my-app">
     <button>Create key</button>

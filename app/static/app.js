@@ -97,18 +97,104 @@ $("#doc-rows").addEventListener("click", async e => {
   if (reindex) await api(`/api/documents/${reindex}/reindex`, { method: "POST" });
   if (del || reindex) loadDocuments();
 });
-async function uploadFiles(files) {
-  const fd = new FormData();
-  [...files].forEach(f => fd.append("files", f));
-  const r = await fetch("/api/documents", { method: "POST", body: fd });
-  if (!r.ok) alert((await r.json()).detail);
-  loadDocuments();
+// Upload one file per request, a few at a time, so each file gets its own progress bar.
+const UPLOAD_CONCURRENCY = 3;
+const uploads = [];
+function renderUploads() {
+  $("#upload-panel").hidden = !uploads.length;
+  const n = s => uploads.filter(u => u.state === s).length;
+  const active = n("waiting") + n("uploading");
+  $("#upload-summary").textContent = `${uploads.length} files: ${n("queued")} queued for ingestion, ` +
+    `${n("skipped")} skipped, ${n("error")} failed` + (active ? `, ${active} uploading…` : "");
+  $("#upload-list").innerHTML = uploads.map(u => `<li><span class="name">${esc(u.name)}</span>
+    ${u.state === "uploading" || u.state === "waiting" ? `<progress max="100" value="${u.pct}"></progress>` : ""}
+    <span class="${{ queued: "ok", skipped: "warn", error: "bad" }[u.state] || "muted"}">${esc(u.msg || u.state)}</span></li>`).join("");
+}
+function sendOne(u) {
+  return new Promise(resolve => {
+    const fd = new FormData();
+    fd.append("files", u.file, u.name);
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/documents");
+    xhr.upload.onprogress = e => { if (e.lengthComputable) { u.pct = Math.round(e.loaded / e.total * 100); renderUploads(); } };
+    xhr.onload = () => {
+      try {
+        const body = JSON.parse(xhr.responseText);
+        if (xhr.status >= 400) { u.state = "error"; u.msg = body.detail || xhr.statusText; }
+        else { const r = body.results[0]; u.state = r.status; u.msg = r.reason || r.status; }
+      } catch { u.state = "error"; u.msg = xhr.statusText || "upload failed"; }
+      resolve();
+    };
+    xhr.onerror = () => { u.state = "error"; u.msg = "network error"; resolve(); };
+    u.state = "uploading"; xhr.send(fd);
+  });
+}
+let pumping = false;
+async function pump() {
+  if (pumping) return; pumping = true;
+  const worker = async () => {
+    let u;
+    while ((u = uploads.find(x => x.state === "waiting"))) { await sendOne(u); renderUploads(); loadDocuments(); }
+  };
+  await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, worker));
+  pumping = false;
+}
+function uploadFiles(items) {
+  for (const { file, name } of items) {
+    const n = name || file.webkitRelativePath || file.name;
+    if (!n.toLowerCase().endsWith(".pdf")) continue;  // folders often contain other files; ignore them quietly
+    uploads.push({ file, name: n, state: "waiting", pct: 0 });
+  }
+  renderUploads(); pump();
+}
+// Walk dropped folders recursively (Chrome, Edge, Firefox, Safari all support webkitGetAsEntry).
+async function entriesToFiles(entry, path = "") {
+  if (entry.isFile) return [{ file: await new Promise((ok, err) => entry.file(ok, err)), name: path + entry.name }];
+  const reader = entry.createReader(), out = [];
+  let batch;
+  do {
+    batch = await new Promise((ok, err) => reader.readEntries(ok, err));
+    for (const e of batch) out.push(...await entriesToFiles(e, path + entry.name + "/"));
+  } while (batch.length);
+  return out;
 }
 const dz = $("#dropzone");
-$("#file-input").addEventListener("change", e => uploadFiles(e.target.files));
+$("#pick-files").addEventListener("click", () => $("#file-input").click());
+$("#pick-folder").addEventListener("click", () => $("#folder-input").click());
+for (const id of ["#file-input", "#folder-input"]) {
+  $(id).addEventListener("change", e => { uploadFiles([...e.target.files].map(file => ({ file }))); e.target.value = ""; });
+}
 dz.addEventListener("dragover", e => { e.preventDefault(); dz.classList.add("over"); });
 dz.addEventListener("dragleave", () => dz.classList.remove("over"));
-dz.addEventListener("drop", e => { e.preventDefault(); dz.classList.remove("over"); uploadFiles(e.dataTransfer.files); });
+dz.addEventListener("drop", async e => {
+  e.preventDefault(); dz.classList.remove("over");
+  const entries = [...e.dataTransfer.items].map(i => i.webkitGetAsEntry?.()).filter(Boolean);
+  if (entries.length) uploadFiles((await Promise.all(entries.map(en => entriesToFiles(en)))).flat());
+  else uploadFiles([...e.dataTransfer.files].map(file => ({ file })));
+});
+$("#clear-uploads").addEventListener("click", () => {
+  for (let i = uploads.length - 1; i >= 0; i--) if (!["waiting", "uploading"].includes(uploads[i].state)) uploads.splice(i, 1);
+  renderUploads();
+});
+function showImport(r) {
+  const skipped = r.results.filter(x => x.status === "skipped");
+  $("#import-result").className = "result " + (skipped.length ? "warn" : "ok");
+  $("#import-result").textContent = `${r.queued} queued, ${skipped.length} skipped` +
+    (skipped.length ? ": " + skipped.slice(0, 5).map(x => `${x.file} (${x.reason})`).join("; ") : "");
+  loadDocuments();
+}
+$("#import-urls").addEventListener("click", async () => {
+  const urls = $("#url-list").value.split("\n").map(s => s.trim()).filter(Boolean);
+  if (!urls.length) return;
+  $("#import-result").className = "result"; $("#import-result").textContent = `Downloading ${urls.length}…`;
+  try { showImport(await api("/api/documents/urls", { method: "POST", body: JSON.stringify({ urls }) })); $("#url-list").value = ""; }
+  catch (err) { $("#import-result").className = "result bad"; $("#import-result").textContent = err.message; }
+});
+$("#import-folder").addEventListener("click", async () => {
+  $("#import-result").className = "result"; $("#import-result").textContent = "Scanning…";
+  try { showImport(await api("/api/documents/import-folder", { method: "POST" })); }
+  catch (err) { $("#import-result").className = "result bad"; $("#import-result").textContent = err.message; }
+});
 
 // ---------- chat ----------
 function addMsg(cls, html) {
@@ -135,6 +221,7 @@ $("#chat-form").addEventListener("submit", async e => {
 // ---------- admin ----------
 async function loadKeys() {
   $("#api-base").textContent = location.origin + "/v1";
+  $("#mcp-url").textContent = location.origin + "/mcp";
   const keys = await api("/api/admin/keys");
   $("#key-rows").innerHTML = keys.map(k => `<tr><td>${esc(k.name)}</td><td><code>${esc(k.prefix)}…</code></td>
     <td>${fmtTime(k.created)}</td><td>${k.last_used ? fmtTime(k.last_used) : "never"}</td>

@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }
 :root {
   --bg: #f7f7f8; --panel: #fff; --text: #1d1d1f; --muted: #6b6b73; --border: #e3e3e8;
   --accent: #2f5bea; --ok: #1a8f4c; --bad: #c8322b; --warn: #b7791f;
@@ -30,8 +31,17 @@ table { width: 100%; border-collapse: collapse; background: var(--panel); border
 td { overflow-wrap: anywhere; }
 th, td { text-align: left; padding: .45rem .7rem; border-bottom: 1px solid var(--border); font-size: .9rem; vertical-align: top; }
 th { color: var(--muted); font-weight: 500; }
-#dropzone { display: block; border: 2px dashed var(--border); border-radius: 10px; padding: 2.5rem; text-align: center; cursor: pointer; background: var(--panel); }
+#dropzone { display: block; border: 2px dashed var(--border); border-radius: 10px; padding: 2rem; text-align: center; background: var(--panel); }
 #dropzone.over { border-color: var(--accent); }
+#dropzone p { margin: 0 0 .75rem; }
+textarea { display: block; width: 100%; padding: .45rem .6rem; margin-top: .2rem; font: inherit; color: var(--text);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+#upload-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: .5rem 1rem; margin: 1rem 0; }
+#upload-list { list-style: none; padding: 0; margin: 0; max-height: 260px; overflow: auto; font-size: .85rem; }
+#upload-list li { display: flex; gap: .75rem; align-items: center; padding: .2rem 0; border-bottom: 1px solid var(--border); }
+#upload-list .name { flex: 1; overflow-wrap: anywhere; }
+#upload-list progress { width: 120px; }
+.more-import { margin: 1rem 0; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: .6rem 1rem; }
 #messages { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1rem; }
 .msg { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: .75rem 1rem; white-space: pre-wrap; }
 .msg.user { align-self: flex-end; background: var(--accent); color: #fff; border: none; max-width: 80%; }

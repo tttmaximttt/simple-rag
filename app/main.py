@@ -7,30 +7,40 @@ import shutil
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import config, db, rag, stores, tokenizer
+from .mcp_server import http_app as mcp_http_app
+from .mcp_server import mcp
 from .providers import embeddings, llm
 
 STARTED = time.time()
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+# Public base URL (e.g. https://rag.example.com), used in the OpenAPI spec for GPT Actions.
+PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "100"))
+IMPORT_DIR = Path(os.environ.get("IMPORT_DIR", "/import"))
 CHECK_TIMEOUT_S = 15
 _pool = ThreadPoolExecutor(max_workers=4)
 
-app = FastAPI(title="RAG Studio")
-
-
-@app.on_event("startup")
-def _startup():
+@asynccontextmanager
+async def lifespan(_app):
     db.init()
     rag.start_worker()
     db.log("info", "app", "started")
+    async with mcp.session_manager.run():
+        yield
+
+
+app = FastAPI(title="RAG Studio", lifespan=lifespan)
 
 
 def _key_hash(key: str) -> str:
@@ -40,10 +50,14 @@ def _key_hash(key: str) -> str:
 @app.middleware("http")
 async def auth(request: Request, call_next):
     path = request.url.path
-    # Public API: always requires an API key created on the Admin page.
-    if path.startswith("/v1/"):
+    # Public API and MCP: always require an API key created on the Admin page.
+    if path == "/v1/openapi.json":
+        return await call_next(request)
+    if path.startswith("/v1/") or path == "/mcp":
         header = request.headers.get("authorization", "")
-        key = header[7:] if header.startswith("Bearer ") else request.headers.get("x-api-key", "")
+        key = (header[7:] if header.startswith("Bearer ") else request.headers.get("x-api-key", "")
+               # For clients that only accept a URL (e.g. claude.ai custom connectors).
+               or request.query_params.get("key", ""))
         found = key and db.rows("SELECT id FROM api_keys WHERE hash=?", (_key_hash(key),))
         if not found:
             return JSONResponse({"error": "Missing or invalid API key"}, status_code=401)
@@ -130,31 +144,128 @@ def list_documents():
     return db.rows("SELECT * FROM documents ORDER BY created DESC")
 
 
-@app.post("/api/documents")
-async def upload(files: list[UploadFile]):
+class TooLarge(Exception):
+    pass
+
+
+def _register(filename: str, tmp: Path, size: int) -> dict:
+    """Move a downloaded/uploaded temp file into storage and queue it, skipping duplicates."""
+    digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
+    dup = db.rows("SELECT id, filename FROM documents WHERE sha256=?", (digest,))
+    if dup:
+        tmp.unlink(missing_ok=True)
+        return {"file": filename, "status": "skipped", "reason": f"duplicate of {dup[0]['filename']}"}
+    if tmp.read_bytes()[:5] != b"%PDF-":
+        tmp.unlink(missing_ok=True)
+        return {"file": filename, "status": "skipped", "reason": "not a PDF"}
+    doc_id = uuid.uuid4().hex
+    tmp.replace(config.UPLOAD_DIR / f"{doc_id}.pdf")
+    now = time.time()
+    db.execute("INSERT INTO documents (id, filename, size, status, created, updated, sha256) VALUES (?,?,?,?,?,?,?)",
+               (doc_id, filename, size, "queued", now, now, digest))
+    rag.enqueue(doc_id)
+    return {"file": filename, "status": "queued", "id": doc_id}
+
+
+def _require_setup():
     if not config.load()["configured"]:
         raise HTTPException(400, "Finish setup first")
-    created = []
+
+
+def _clean_name(name: str) -> str:
+    # Keep folder structure from folder uploads (e.g. "contracts/2024/a.pdf"), drop anything unsafe.
+    parts = [p for p in Path(name or "upload.pdf").parts if p not in ("", ".", "..", "/", "\\")]
+    return "/".join(parts)[-255:] or "upload.pdf"
+
+
+@app.post("/api/documents")
+async def upload(files: list[UploadFile]):
+    """Upload one or many PDFs. Non-PDFs, oversized files, and duplicates are skipped and reported."""
+    _require_setup()
+    results = []
     for f in files:
-        if not (f.filename or "").lower().endswith(".pdf"):
-            raise HTTPException(400, f"{f.filename}: only PDF files are supported")
-        doc_id = uuid.uuid4().hex
-        dest = config.UPLOAD_DIR / f"{doc_id}.pdf"
+        name = _clean_name(f.filename)
+        if not name.lower().endswith(".pdf"):
+            results.append({"file": name, "status": "skipped", "reason": "not a .pdf file"})
+            continue
+        tmp = config.UPLOAD_DIR / f".tmp-{uuid.uuid4().hex}"
         size = 0
-        with dest.open("wb") as out:
+        with tmp.open("wb") as out:
             while chunk := await f.read(1 << 20):
                 size += len(chunk)
                 if size > MAX_UPLOAD_MB << 20:
-                    out.close()
-                    dest.unlink(missing_ok=True)
-                    raise HTTPException(413, f"{f.filename}: larger than {MAX_UPLOAD_MB} MB")
+                    break
                 out.write(chunk)
-        now = time.time()
-        db.execute("INSERT INTO documents (id, filename, size, status, created, updated) VALUES (?,?,?,?,?,?)",
-                   (doc_id, Path(f.filename).name, size, "queued", now, now))
-        rag.enqueue(doc_id)
-        created.append(doc_id)
-    return {"ids": created}
+        if size > MAX_UPLOAD_MB << 20:
+            tmp.unlink(missing_ok=True)
+            results.append({"file": name, "status": "skipped", "reason": f"larger than {MAX_UPLOAD_MB} MB"})
+            continue
+        results.append(_register(name, tmp, size))
+    return {"results": results, "queued": sum(r["status"] == "queued" for r in results)}
+
+
+class UrlList(BaseModel):
+    urls: list[str]
+
+
+def _download(url: str) -> dict:
+    name = _clean_name(Path(httpx.URL(url).path).name or "download.pdf")
+    if not name.lower().endswith(".pdf"):
+        name += ".pdf"
+    tmp = config.UPLOAD_DIR / f".tmp-{uuid.uuid4().hex}"
+    try:
+        if not url.lower().startswith(("http://", "https://")):
+            raise ValueError("only http(s) URLs are supported")
+        size = 0
+        with httpx.stream("GET", url, follow_redirects=True, timeout=60) as r, tmp.open("wb") as out:
+            r.raise_for_status()
+            for chunk in r.iter_bytes(1 << 20):
+                size += len(chunk)
+                if size > MAX_UPLOAD_MB << 20:
+                    raise TooLarge()
+                out.write(chunk)
+        res = _register(name, tmp, size)
+    except TooLarge:
+        res = {"file": name, "status": "skipped", "reason": f"larger than {MAX_UPLOAD_MB} MB"}
+    except httpx.HTTPStatusError as e:
+        res = {"file": name, "status": "skipped", "reason": f"download failed: HTTP {e.response.status_code}"}
+    except Exception as e:
+        res = {"file": name, "status": "skipped", "reason": f"download failed: {e}"}
+    tmp.unlink(missing_ok=True)
+    res["url"] = url
+    return res
+
+
+@app.post("/api/documents/urls")
+def import_urls(body: UrlList):
+    """Download and ingest a list of PDF URLs."""
+    _require_setup()
+    urls = [u.strip() for u in body.urls if u.strip()]
+    results = list(_pool.map(_download, urls))
+    db.log("info", "import", f"URL import: {sum(r['status'] == 'queued' for r in results)}/{len(urls)} queued")
+    return {"results": results, "queued": sum(r["status"] == "queued" for r in results)}
+
+
+@app.post("/api/documents/import-folder")
+def import_folder():
+    """Ingest every PDF under IMPORT_DIR (a mounted folder), skipping ones already imported."""
+    _require_setup()
+    if not IMPORT_DIR.is_dir():
+        raise HTTPException(404, f"Import folder {IMPORT_DIR} does not exist; mount one in docker-compose.yml")
+    results = []
+    for path in sorted(IMPORT_DIR.rglob("*")):
+        if not path.is_file() or path.suffix.lower() != ".pdf":
+            continue
+        name = str(path.relative_to(IMPORT_DIR))
+        size = path.stat().st_size
+        if size > MAX_UPLOAD_MB << 20:
+            results.append({"file": name, "status": "skipped", "reason": f"larger than {MAX_UPLOAD_MB} MB"})
+            continue
+        tmp = config.UPLOAD_DIR / f".tmp-{uuid.uuid4().hex}"
+        shutil.copyfile(path, tmp)
+        results.append(_register(name, tmp, size))
+    db.log("info", "import", f"folder import: {sum(r['status'] == 'queued' for r in results)}/{len(results)} queued")
+    return {"folder": str(IMPORT_DIR), "results": results, "queued": sum(r["status"] == "queued" for r in results)}
 
 
 @app.post("/api/documents/{doc_id}/reindex")
@@ -306,7 +417,7 @@ class RetrieveIn(BaseModel):
     top_k: int | None = None
 
 
-@app.post("/v1/query")
+@app.post("/v1/query", operation_id="askDocuments")
 def v1_query(q: QueryIn):
     """Retrieve relevant chunks and generate an answer with citations."""
     try:
@@ -315,7 +426,7 @@ def v1_query(q: QueryIn):
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
 
 
-@app.post("/v1/retrieve")
+@app.post("/v1/retrieve", operation_id="searchDocuments")
 def v1_retrieve(q: RetrieveIn):
     """Retrieval only: the top matching chunks, for use with your own LLM."""
     try:
@@ -324,14 +435,34 @@ def v1_retrieve(q: RetrieveIn):
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
 
 
-@app.get("/v1/documents")
+@app.get("/v1/documents", operation_id="listDocuments")
 def v1_documents():
     return list_documents()
 
 
-@app.post("/v1/documents")
+@app.post("/v1/documents", operation_id="uploadDocuments", include_in_schema=False)
 async def v1_upload(files: list[UploadFile]):
     return await upload(files)
 
+
+@app.post("/v1/documents/urls", operation_id="importDocumentUrls", include_in_schema=False)
+def v1_import_urls(body: UrlList):
+    return import_urls(body)
+
+
+@app.get("/v1/openapi.json", include_in_schema=False)
+def v1_openapi(request: Request):
+    """OpenAPI spec of the /v1 API only, with a server URL and bearer auth, for ChatGPT GPT Actions."""
+    routes = [r for r in app.routes if getattr(r, "path", "").startswith("/v1/")]
+    spec = get_openapi(title="RAG Studio API", version="1.0.0", routes=routes,
+                       description="Search and ask questions about the user's uploaded PDF documents.")
+    spec["servers"] = [{"url": PUBLIC_URL or str(request.base_url).rstrip("/")}]
+    spec.setdefault("components", {})["securitySchemes"] = {"bearerAuth": {"type": "http", "scheme": "bearer"}}
+    spec["security"] = [{"bearerAuth": []}]
+    return spec
+
+
+# MCP endpoint at /mcp; must come before the static catch-all mount.
+app.router.routes.extend(mcp_http_app.routes)
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")

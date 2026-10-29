@@ -43,6 +43,10 @@ def conn():
 def init():
     with conn() as c:
         c.executescript(SCHEMA)
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(documents)")}
+        if "sha256" not in cols:  # added after the first release
+            c.execute("ALTER TABLE documents ADD COLUMN sha256 TEXT")
+        c.execute("CREATE INDEX IF NOT EXISTS documents_sha ON documents (sha256)")
 
 
 def rows(sql, args=()):
