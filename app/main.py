@@ -8,13 +8,14 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import auth, config, db, rag, stores, tokenizer
 from .mcp_server import http_app as mcp_http_app
@@ -39,11 +40,15 @@ async def lifespan(_app):
         yield
 
 
-app = FastAPI(title="RAG Studio", lifespan=lifespan)
+# No public /docs or /openapi.json: they would list every internal route. /v1/openapi.json covers the public API.
+app = FastAPI(title="RAG Studio", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 
-def _key_hash(key: str) -> str:
-    return hashlib.sha256(key.encode()).hexdigest()
+def _same_origin(request: Request, origin: str) -> bool:
+    # Behind a proxy that rewrites Host, fall back to X-Forwarded-Host or PUBLIC_URL.
+    allowed = {request.headers.get("host", ""), request.headers.get("x-forwarded-host", "").split(",")[0].strip(),
+               urlsplit(PUBLIC_URL).netloc}
+    return urlsplit(origin).netloc.lower() in {h.lower() for h in allowed if h}
 
 
 @app.middleware("http")
@@ -57,7 +62,7 @@ async def authenticate(request: Request, call_next):
         key = (header[7:] if header.startswith("Bearer ") else request.headers.get("x-api-key", "")
                # For clients that only accept a URL (e.g. claude.ai custom connectors).
                or request.query_params.get("key", ""))
-        found = key and db.rows("SELECT id FROM api_keys WHERE hash=?", (_key_hash(key),))
+        found = key and db.rows("SELECT id FROM api_keys WHERE hash=?", (auth.secret_hash(key),))
         if not found:
             return JSONResponse({"error": "Missing or invalid API key"}, status_code=401)
         db.execute("UPDATE api_keys SET last_used=? WHERE id=?", (time.time(), found[0]["id"]))
@@ -71,7 +76,7 @@ async def authenticate(request: Request, call_next):
             return JSONResponse({"error": "Change the temporary password first"}, status_code=403)
         # CSRF defence in depth (the cookie is also SameSite=Strict): state changes must come from our origin.
         origin = request.headers.get("origin")
-        if request.method not in ("GET", "HEAD") and origin and origin.split("://", 1)[-1] != request.headers.get("host"):
+        if request.method not in ("GET", "HEAD") and origin and not _same_origin(request, origin):
             return JSONResponse({"error": "Cross-origin request blocked"}, status_code=403)
         request.state.user = user
     # Static UI files are public; the page shows a login form when the API answers 401.
@@ -94,20 +99,21 @@ def auth_status(request: Request):
 
 
 class Credentials(BaseModel):
-    username: str
-    password: str
+    username: str = Field(max_length=128)
+    password: str = Field(max_length=1024)
 
 
 @app.post("/api/auth/login")
 def auth_login(body: Credentials, request: Request, response: Response):
     ip = _client_ip(request)
-    if auth.locked_out(ip):
+    try:
+        token = auth.login(body.username, body.password, ip)
+    except auth.LockedOut:
         raise HTTPException(429, f"Too many failed attempts. Try again in {auth.LOCKOUT_S // 60} minutes.")
-    token = auth.login(body.username, body.password, ip)
     if not token:
         raise HTTPException(401, "Wrong username or password")
-    response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.SESSION_TTL_S, httponly=True,
-                        samesite="strict", secure=request.url.scheme == "https")
+    response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.SESSION_TTL_S, httponly=True, samesite="strict",
+                        secure=PUBLIC_URL.startswith("https://") or request.url.scheme == "https")
     return {"ok": True}
 
 
@@ -432,7 +438,7 @@ class KeyName(BaseModel):
 def create_key(body: KeyName):
     key = "rag_" + secrets.token_urlsafe(32)
     db.execute("INSERT INTO api_keys (name, prefix, hash, created) VALUES (?,?,?,?)",
-               (body.name, key[:10], _key_hash(key), time.time()))
+               (body.name, key[:10], auth.secret_hash(key), time.time()))
     db.log("info", "api", f"API key created: {body.name}")
     return {"key": key}  # shown once; only the hash is stored
 
