@@ -1,4 +1,5 @@
 import hashlib
+import ipaddress
 import os
 import platform
 import secrets
@@ -89,7 +90,13 @@ PUBLIC_API_PATHS = {"/api/health", "/api/auth/status", "/api/auth/login"}
 # ---------- auth ----------
 
 def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    if not request.client:
+        return "unknown"
+    # uvicorn copies X-Forwarded-For from trusted proxies unchecked; keep junk out of lockout keys and logs.
+    try:
+        return str(ipaddress.ip_address(request.client.host))
+    except ValueError:
+        return "invalid"
 
 
 @app.get("/api/auth/status")
@@ -126,8 +133,8 @@ def auth_logout(request: Request, response: Response):
 
 
 class PasswordChange(BaseModel):
-    current_password: str
-    new_password: str
+    current_password: str = Field(max_length=1024)
+    new_password: str = Field(max_length=1024)
 
 
 @app.post("/api/auth/password")

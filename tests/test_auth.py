@@ -23,14 +23,11 @@ def test_unknown_user_counts_toward_lockout():
         auth.login("nobody", "x", "2.2.2.2")
 
 
-def test_unknown_user_costs_a_password_check():
-    t = time.perf_counter()
-    auth.login("nobody", "x", "2.2.2.2")
-    unknown = time.perf_counter() - t
-    t = time.perf_counter()
-    auth.login("admin", "x", "3.3.3.3")
-    known = time.perf_counter() - t
-    assert unknown > known / 2
+def test_unknown_user_costs_a_password_check(monkeypatch):
+    checked = []
+    monkeypatch.setattr(auth, "_verify_password", lambda password, stored: checked.append(stored) or False)
+    assert auth.login("nobody", "x", "2.2.2.2") is None
+    assert checked == [auth._DUMMY_HASH]
 
 
 def test_success_returns_session_and_clears_failures():
@@ -61,12 +58,89 @@ def test_expired_ips_are_swept():
     assert list(auth._failures) == ["9.9.9.9"]
 
 
+def test_live_ips_are_not_rescanned_on_every_login(monkeypatch):
+    monkeypatch.setattr(auth, "_next_sweep", auth._SWEEP_AT)
+    now = time.time()
+    for i in range(auth._SWEEP_AT + 50):
+        auth._failures[f"10.0.{i // 256}.{i % 256}"] = [now]
+    auth.login("admin", "wrong", "9.9.9.9")
+    assert len(auth._failures) == auth._SWEEP_AT + 51
+    assert auth._next_sweep == 2 * (auth._SWEEP_AT + 50)  # set by the sweep, before 9.9.9.9 was added
+
+
+def test_errors_during_the_check_do_not_count_as_failures(monkeypatch):
+    def broken(password, stored):
+        raise ValueError("malformed hash")
+    monkeypatch.setattr(auth, "_verify_password", broken)
+    for _ in range(auth.MAX_FAILURES + 1):
+        with pytest.raises(ValueError):
+            auth.login("admin", PASSWORD, "6.6.6.6")
+    assert not auth._failures.get("6.6.6.6")
+    monkeypatch.undo()
+    assert auth.login("admin", PASSWORD, "6.6.6.6")
+
+
+def test_sweep_after_an_error_during_the_check(monkeypatch):
+    def broken(password, stored):
+        raise ValueError("malformed hash")
+    monkeypatch.setattr(auth, "_verify_password", broken)
+    with pytest.raises(ValueError):
+        auth.login("admin", PASSWORD, "6.6.6.6")
+    assert "6.6.6.6" not in auth._failures
+    monkeypatch.undo()
+    auth._failures["6.6.6.7"] = []  # an emptied entry must not break the sweep either
+    monkeypatch.setattr(auth, "_next_sweep", 0)
+    assert auth.login("admin", PASSWORD, "6.6.6.6")
+    assert "6.6.6.7" not in auth._failures
+
+
 def test_failed_login_events_are_capped():
     for i in range(auth.MAX_FAILURE_LOGS + 10):
         auth.login("admin", "wrong", f"20.0.0.{i}")
     count = lambda pattern: db.rows("SELECT COUNT(*) c FROM events WHERE message LIKE ?", (pattern,))[0]["c"]
     assert count("failed login%") == auth.MAX_FAILURE_LOGS
     assert count("further failed logins%") == 1
+
+
+def _end_log_window():
+    auth._failure_logs[0] -= auth.LOCKOUT_S
+    auth._unlogged[0] -= auth.LOCKOUT_S
+
+
+def _messages(pattern):
+    return [r["message"] for r in db.rows("SELECT message FROM events WHERE message LIKE ?", (pattern,))]
+
+
+def test_lockout_is_logged_and_rejected_attempts_summarized():
+    for _ in range(auth.MAX_FAILURES):
+        auth.login("admin", "wrong", "7.7.7.7")
+    for _ in range(30):
+        with pytest.raises(auth.LockedOut):
+            auth.login("admin", "wrong", "7.7.7.7")
+    assert len(_messages("%7.7.7.7 locked out%")) == 1
+    assert len(_messages("%7.7.7.7%")) == auth.MAX_FAILURES  # rejections aren't written one by one
+    _end_log_window()
+    with pytest.raises(auth.LockedOut):
+        auth.login("admin", "wrong", "7.7.7.7")
+    assert _messages("%not logged one by one%") == [
+        "30 failed or locked-out logins from 1 IP(s) were not logged one by one in the last window, "
+        "most from 7.7.7.7 (30)"]
+
+
+def test_capped_failures_still_show_the_busiest_ip():
+    for i in range(auth.MAX_FAILURE_LOGS):  # chaff that uses up the window's cap
+        auth.login("admin", "wrong", f"21.0.0.{i}")
+    for _ in range(auth.MAX_FAILURES + 10):  # then a targeted attempt from one IP
+        try:
+            auth.login("admin", "wrong", "8.8.8.8")
+        except auth.LockedOut:
+            pass
+    assert not _messages("failed login%8.8.8.8%")
+    _end_log_window()
+    auth.login("admin", PASSWORD, "1.2.3.4")  # a successful login also writes the summary
+    assert _messages("%not logged one by one%") == [
+        f"{auth.MAX_FAILURES + 10} failed or locked-out logins from 1 IP(s) were not logged one by one "
+        f"in the last window, most from 8.8.8.8 ({auth.MAX_FAILURES + 10})"]
 
 
 def test_event_trim_keeps_auth_and_other_events_separately(monkeypatch):

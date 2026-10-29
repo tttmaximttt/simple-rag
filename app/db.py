@@ -55,6 +55,8 @@ def init():
         if "sha256" not in cols:  # added after the first release
             c.execute("ALTER TABLE documents ADD COLUMN sha256 TEXT")
         c.execute("CREATE INDEX IF NOT EXISTS documents_sha ON documents (sha256)")
+        # Lets log() trim each partition with an index seek instead of scanning the table.
+        c.execute("CREATE INDEX IF NOT EXISTS events_part ON events ((source IS 'auth'), id)")
 
 
 def rows(sql, args=()):
@@ -71,6 +73,6 @@ def execute(sql, args=()) -> int:
 def log(level: str, source: str, message: str):
     execute("INSERT INTO events (ts, level, source, message) VALUES (?,?,?,?)", (time.time(), level, source, message))
     # Auth events and everything else are capped separately, so neither can push the other out.
-    part = "source = 'auth'" if source == "auth" else "source IS NOT 'auth'"
+    part = f"(source IS 'auth') = {int(source == 'auth')}"  # must match the events_part index expression
     execute(f"DELETE FROM events WHERE {part} AND id <= "
             f"(SELECT id FROM events WHERE {part} ORDER BY id DESC LIMIT 1 OFFSET {KEEP_EVENTS})")

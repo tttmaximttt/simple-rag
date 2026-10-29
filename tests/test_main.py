@@ -51,3 +51,19 @@ def test_lockout_returns_429(client):
 
 def test_oversized_credentials_rejected(client):
     assert client.post("/api/auth/login", json={"username": "a" * 5000, "password": "x"}).status_code == 422
+
+
+def test_oversized_password_change_rejected(logged_in):
+    r = logged_in.post("/api/auth/password", json={"current_password": PASSWORD, "new_password": "a" * 5000})
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("host, expected", [
+    ("203.0.113.7", "203.0.113.7"),
+    ("::1", "::1"),
+    ("1.2.3.4\nfake log line" + "x" * 5000, "invalid"),
+    (None, "unknown"),
+])
+def test_client_ip_is_normalised(host, expected):
+    request = main.Request({"type": "http", "client": (host, 1234) if host else None})
+    assert main._client_ip(request) == expected
