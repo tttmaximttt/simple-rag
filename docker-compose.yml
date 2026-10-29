@@ -2,7 +2,8 @@ services:
   app:
     build: .
     ports:
-      - "${PORT:-8080}:8080"
+      # Only reachable from this host; put a TLS reverse proxy in front for outside access.
+      - "127.0.0.1:${PORT:-8080}:8080"
     environment:
       # First-run admin login. If ADMIN_PASSWORD is empty, a random temporary password
       # is printed to the logs. Either way it must be changed at first login.
