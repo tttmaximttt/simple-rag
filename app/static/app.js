@@ -7,15 +7,63 @@ const fmtBytes = b => b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.round(b / 1e
 async function api(path, opts = {}) {
   const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   const body = r.headers.get("content-type")?.includes("json") ? await r.json() : await r.text();
-  if (!r.ok) throw new Error(body.error || body.detail || r.statusText);
+  if (!r.ok) {
+    if (r.status === 401 && !path.startsWith("/api/auth/")) showAuth("login");
+    if (r.status === 403 && /temporary password/.test(body.error)) showAuth("password");
+    throw new Error(body.error || body.detail || r.statusText);
+  }
   return body;
 }
+
+// ---------- auth ----------
+let session = { user: null, must_change_password: false };
+function showAuth(view) {
+  $("#nav").hidden = $("#account").hidden = view === "login" || session.must_change_password || !session.user;
+  $$("main > section").forEach(s => (s.hidden = s.id !== "view-" + view));
+  $("#password-reason").textContent = session.must_change_password
+    ? "You logged in with the temporary password. Choose your own password to continue." : "";
+  clearInterval(docTimer);
+}
+async function refreshSession() {
+  session = await api("/api/auth/status");
+  $("#account-name").textContent = session.user ? "Signed in as " + session.user : "";
+  return session;
+}
+$("#login-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await api("/api/auth/login", { method: "POST", body: JSON.stringify({ username: f.username.value, password: f.password.value }) });
+    f.password.value = ""; $("#login-error").textContent = "";
+    route();
+  } catch (err) { $("#login-error").textContent = err.message; }
+});
+$("#password-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target, out = $("#password-result");
+  if (f.new_password.value !== f.repeat.value) { out.className = "result bad"; out.textContent = "The new passwords don't match"; return; }
+  try {
+    await api("/api/auth/password", { method: "POST",
+      body: JSON.stringify({ current_password: f.current_password.value, new_password: f.new_password.value }) });
+    f.reset(); out.className = "result ok"; out.textContent = "Password changed.";
+    history.replaceState(null, "", "#"); route();
+  } catch (err) { out.className = "result bad"; out.textContent = err.message; }
+});
+$("#logout").addEventListener("click", async () => {
+  await api("/api/auth/logout", { method: "POST" });
+  history.replaceState(null, "", "#"); route();
+});
 
 // ---------- routing ----------
 const views = { setup: loadSetup, documents: loadDocuments, chat: () => $("#question").focus(), admin: loadAdmin };
 let docTimer;
 async function route() {
+  await refreshSession();
+  if (!session.user) return showAuth("login");
+  if (session.must_change_password) return showAuth("password");
+  $("#nav").hidden = $("#account").hidden = false;
   let name = location.hash.slice(1);
+  if (name === "password") { $("#password-result").textContent = ""; return showAuth("password"); }
   if (!views[name]) {
     const { configured } = await api("/api/health");
     name = configured ? "documents" : "setup";
@@ -120,7 +168,8 @@ function sendOne(u) {
     xhr.onload = () => {
       try {
         const body = JSON.parse(xhr.responseText);
-        if (xhr.status >= 400) { u.state = "error"; u.msg = body.detail || xhr.statusText; }
+        if (xhr.status === 401) showAuth("login");
+        if (xhr.status >= 400) { u.state = "error"; u.msg = body.detail || body.error || xhr.statusText; }
         else { const r = body.results[0]; u.state = r.status; u.msg = r.reason || r.status; }
       } catch { u.state = "error"; u.msg = xhr.statusText || "upload failed"; }
       resolve();

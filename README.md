@@ -9,7 +9,14 @@ git clone <this repo> rag-studio && cd rag-studio
 docker compose up -d --build
 ```
 
-Open http://localhost:8080. The **Setup** page opens first.
+Open http://localhost:8080 and log in. On first start the app creates the user `admin` with a **temporary password** and prints it to the logs:
+
+```bash
+docker compose logs app | grep -A1 "first-run login"
+#   RAG Studio first-run login:  user admin  temporary password 3kQ9...
+```
+
+After that first login you must choose your own password (10 or more characters) before anything else is available. Then the **Setup** page opens.
 
 1. **Vector database.** The default is PostgreSQL + pgvector, which is bundled. Its connection string is pre-filled (`postgresql://rag:rag@postgres:5432/rag`). You can also pick Qdrant (`docker compose --profile qdrant up -d`, URL `http://qdrant:6333`) or embedded Chroma, which needs no server.
 2. **Embeddings.** Choose Local (runs on CPU in the container, no key needed, downloads the model on first use), any OpenAI-compatible API, or Ollama.
@@ -43,19 +50,26 @@ docker compose exec ollama ollama pull nomic-embed-text
 
 Then pick Ollama for both embeddings and the LLM (URL `http://ollama:11434`).
 
+## Admin login and security
+
+- The whole web UI and every internal `/api` route sit behind the admin login: setup, documents, chat, the admin page, and API keys. Without a session you only see the login form.
+- **First run:** the app creates the user `admin` with a temporary password, either random and printed to the logs or taken from `ADMIN_PASSWORD`. The first login forces a password change, and until then every other route returns 403.
+- Passwords are stored as scrypt hashes. A session is an HttpOnly, SameSite=Strict cookie (also Secure over HTTPS) that lasts 7 days. Changing the password signs out all other sessions.
+- After 5 failed logins from one IP, that IP is locked out for 5 minutes. Logins, failed logins, logouts, and password changes go into the event log on the Admin page.
+- **Forgot the password?** Run `docker compose exec app python -m app.auth reset-admin`. It prints a new temporary password, which must again be changed at login.
+- `/v1` and `/mcp` don't use the login. They use API keys, which you create on the Admin page.
+
 ## Running on a server
 
-Set a password before you expose the app. This turns on HTTP basic auth for the whole UI and API (user `admin`):
-
 ```bash
-ADMIN_PASSWORD='choose-something-long' PORT=8080 docker compose up -d --build
+PORT=8080 PUBLIC_URL=https://rag.example.com docker compose up -d --build
 ```
 
-Put a TLS reverse proxy (Caddy, nginx, Traefik) in front of it. API keys are stored in `/data/config.json` on the `rag-data` volume with mode 600, and the UI never shows them back.
+Put a TLS reverse proxy (Caddy, nginx, Traefik) in front of it, so that the login cookie and API keys only travel over HTTPS. API keys for model providers are stored in `/data/config.json` on the `rag-data` volume with mode 600, and the UI never shows them back.
 
 ## Using it from your apps (HTTP API)
 
-Once PDFs are ingested, any app or script can query the RAG at `http://<host>:8080/v1`. Create an API key under **Admin → API keys** and send it as `Authorization: Bearer <key>` (or as an `X-API-Key` header). The `/v1` endpoints always require a key, whether or not `ADMIN_PASSWORD` is set.
+Once PDFs are ingested, any app or script can query the RAG at `http://<host>:8080/v1`. Create an API key under **Admin → API keys** and send it as `Authorization: Bearer <key>` (or as an `X-API-Key` header). The `/v1` endpoints always require a key.
 
 **Ask a question** and get an answer with sources:
 
@@ -191,7 +205,8 @@ The **Admin** page shows:
 | Env var | Default | Meaning |
 |---|---|---|
 | `PORT` | `8080` | Host port |
-| `ADMIN_PASSWORD` | empty | Turns on basic auth for the UI when set |
+| `ADMIN_USER` | `admin` | Username of the first-run admin account |
+| `ADMIN_PASSWORD` | empty | Temporary first-run password (random and printed to the logs when empty). Must be changed at first login |
 | `PUBLIC_URL` | empty | Public HTTPS base URL, used as the server in `/v1/openapi.json` |
 | `MAX_UPLOAD_MB` | `100` | Max size per PDF |
 | `IMPORT_DIR` | `/import` | Folder scanned by "Import from server folder" |
@@ -203,6 +218,7 @@ The **Admin** page shows:
 app/main.py          FastAPI routes (setup, documents, chat, admin)
 app/mcp_server.py    MCP server (/mcp) for Claude, ChatGPT, and other MCP clients
 app/rag.py           PDF parsing, chunking, ingestion worker, answering
+app/auth.py          Admin login, sessions, password reset CLI
 app/config.py        Settings persisted from the wizard
 app/db.py            SQLite metadata: documents, queries, events
 app/providers/       Embedding and LLM clients

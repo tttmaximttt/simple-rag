@@ -22,6 +22,13 @@ CREATE TABLE IF NOT EXISTS api_keys (
   id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, prefix TEXT, hash TEXT UNIQUE,
   created REAL, last_used REAL
 );
+CREATE TABLE IF NOT EXISTS users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password_hash TEXT,
+  must_change INTEGER DEFAULT 0, created REAL, last_login REAL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY, user_id INTEGER, created REAL, expires REAL, ip TEXT
+);
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, level TEXT, source TEXT, message TEXT
 );

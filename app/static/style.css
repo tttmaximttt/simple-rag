@@ -53,3 +53,7 @@ details summary { cursor: pointer; }
 .card .v { font-size: 1.4rem; font-weight: 600; } .card .l { color: var(--muted); font-size: .8rem; }
 pre { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: .75rem; max-height: 400px; overflow: auto; font-size: .8rem; }
 .hit { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: .6rem .9rem; margin: .5rem 0; font-size: .85rem; }
+#account { margin-left: auto; display: flex; gap: .75rem; align-items: center; font-size: .85rem; }
+#account a { color: var(--muted); }
+.auth-card { max-width: 420px; margin: 3rem auto; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; }
+.auth-card h1 { margin-top: 0; }

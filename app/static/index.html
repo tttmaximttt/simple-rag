@@ -9,15 +9,39 @@
 <body>
 <header>
   <strong>RAG Studio</strong>
-  <nav>
+  <nav id="nav" hidden>
     <a href="#setup">Setup</a>
     <a href="#documents">Documents</a>
     <a href="#chat">Chat</a>
     <a href="#admin">Admin</a>
   </nav>
+  <span id="account" hidden><span class="muted" id="account-name"></span>
+    <a href="#password">Change password</a> <button class="small-btn" id="logout">Log out</button></span>
 </header>
 
 <main>
+<section id="view-login" hidden>
+  <form id="login-form" class="auth-card">
+    <h1>Log in</h1>
+    <p class="muted small">First run? Use the user <code>admin</code> and the temporary password from the server logs:
+      <code>docker compose logs app | grep -A1 "first-run login"</code></p>
+    <label>Username <input name="username" autocomplete="username" value="admin" required></label>
+    <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+    <button class="primary">Log in</button> <span class="result bad" id="login-error"></span>
+  </form>
+</section>
+
+<section id="view-password" hidden>
+  <form id="password-form" class="auth-card">
+    <h1>Change password</h1>
+    <p class="muted small" id="password-reason"></p>
+    <label>Current password <input name="current_password" type="password" autocomplete="current-password" required></label>
+    <label>New password (10+ characters) <input name="new_password" type="password" autocomplete="new-password" minlength="10" required></label>
+    <label>Repeat new password <input name="repeat" type="password" autocomplete="new-password" minlength="10" required></label>
+    <button class="primary">Save new password</button> <span class="result" id="password-result"></span>
+  </form>
+</section>
+
 <section id="view-setup" hidden>
   <h1>Setup</h1>
   <p class="muted">Choose the components of your RAG pipeline. Use “Test” on each step before saving.</p>

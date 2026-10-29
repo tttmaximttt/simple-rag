@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import os
 import platform
@@ -17,13 +16,12 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import config, db, rag, stores, tokenizer
+from . import auth, config, db, rag, stores, tokenizer
 from .mcp_server import http_app as mcp_http_app
 from .mcp_server import mcp
 from .providers import embeddings, llm
 
 STARTED = time.time()
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 # Public base URL (e.g. https://rag.example.com), used in the OpenAPI spec for GPT Actions.
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "100"))
@@ -34,6 +32,7 @@ _pool = ThreadPoolExecutor(max_workers=4)
 @asynccontextmanager
 async def lifespan(_app):
     db.init()
+    auth.bootstrap()
     rag.start_worker()
     db.log("info", "app", "started")
     async with mcp.session_manager.run():
@@ -48,7 +47,7 @@ def _key_hash(key: str) -> str:
 
 
 @app.middleware("http")
-async def auth(request: Request, call_next):
+async def authenticate(request: Request, call_next):
     path = request.url.path
     # Public API and MCP: always require an API key created on the Admin page.
     if path == "/v1/openapi.json":
@@ -63,19 +62,76 @@ async def auth(request: Request, call_next):
             return JSONResponse({"error": "Missing or invalid API key"}, status_code=401)
         db.execute("UPDATE api_keys SET last_used=? WHERE id=?", (time.time(), found[0]["id"]))
         return await call_next(request)
-    # UI and internal API: optional basic auth.
-    if ADMIN_PASSWORD and path != "/api/health":
-        header = request.headers.get("authorization", "")
-        ok = False
-        if header.startswith("Basic "):
-            try:
-                _, _, pw = base64.b64decode(header[6:]).decode().partition(":")
-                ok = secrets.compare_digest(pw, ADMIN_PASSWORD)
-            except Exception:
-                pass
-        if not ok:
-            return Response(status_code=401, headers={"WWW-Authenticate": 'Basic realm="RAG Studio"'})
+    # Internal API used by the web UI: requires an admin session.
+    if path.startswith("/api/") and path not in PUBLIC_API_PATHS:
+        user = auth.session_user(request.cookies.get(auth.SESSION_COOKIE))
+        if not user:
+            return JSONResponse({"error": "Login required"}, status_code=401)
+        if user["must_change"] and path not in ("/api/auth/password", "/api/auth/logout"):
+            return JSONResponse({"error": "Change the temporary password first"}, status_code=403)
+        # CSRF defence in depth (the cookie is also SameSite=Strict): state changes must come from our origin.
+        origin = request.headers.get("origin")
+        if request.method not in ("GET", "HEAD") and origin and origin.split("://", 1)[-1] != request.headers.get("host"):
+            return JSONResponse({"error": "Cross-origin request blocked"}, status_code=403)
+        request.state.user = user
+    # Static UI files are public; the page shows a login form when the API answers 401.
     return await call_next(request)
+
+
+PUBLIC_API_PATHS = {"/api/health", "/api/auth/status", "/api/auth/login"}
+
+
+# ---------- auth ----------
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+@app.get("/api/auth/status")
+def auth_status(request: Request):
+    user = auth.session_user(request.cookies.get(auth.SESSION_COOKIE))
+    return {"user": user["username"] if user else None, "must_change_password": bool(user and user["must_change"])}
+
+
+class Credentials(BaseModel):
+    username: str
+    password: str
+
+
+@app.post("/api/auth/login")
+def auth_login(body: Credentials, request: Request, response: Response):
+    ip = _client_ip(request)
+    if auth.locked_out(ip):
+        raise HTTPException(429, f"Too many failed attempts. Try again in {auth.LOCKOUT_S // 60} minutes.")
+    token = auth.login(body.username, body.password, ip)
+    if not token:
+        raise HTTPException(401, "Wrong username or password")
+    response.set_cookie(auth.SESSION_COOKIE, token, max_age=auth.SESSION_TTL_S, httponly=True,
+                        samesite="strict", secure=request.url.scheme == "https")
+    return {"ok": True}
+
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request, response: Response):
+    auth.logout(request.cookies.get(auth.SESSION_COOKIE, ""))
+    db.log("info", "auth", f"{request.state.user['username']} logged out")
+    response.delete_cookie(auth.SESSION_COOKIE)
+    return {"ok": True}
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@app.post("/api/auth/password")
+def auth_password(body: PasswordChange, request: Request):
+    try:
+        auth.change_password(request.state.user["id"], body.current_password, body.new_password,
+                             request.cookies.get(auth.SESSION_COOKIE, ""))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
 
 
 # ---------- setup ----------

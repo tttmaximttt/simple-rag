@@ -4,7 +4,9 @@ services:
     ports:
       - "${PORT:-8080}:8080"
     environment:
-      # Optional: protect the UI and API with HTTP basic auth (user "admin").
+      # First-run admin login. If ADMIN_PASSWORD is empty, a random temporary password
+      # is printed to the logs. Either way it must be changed at first login.
+      ADMIN_USER: ${ADMIN_USER:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       # Public HTTPS URL, e.g. https://rag.example.com (used in /v1/openapi.json for GPT Actions).
       PUBLIC_URL: ${PUBLIC_URL:-}
