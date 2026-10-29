@@ -44,6 +44,42 @@ ADMIN_PASSWORD='choose-something-long' PORT=8080 docker compose up -d --build
 
 Put a TLS reverse proxy (Caddy, nginx, Traefik) in front of it. API keys are stored in `/data/config.json` on the `rag-data` volume with mode 600, and the UI never shows them back.
 
+## Using it from your apps (HTTP API)
+
+Once PDFs are ingested, any app or script can query the RAG at `http://<host>:8080/v1`. Create an API key under **Admin → API keys** and send it as `Authorization: Bearer <key>` (or as an `X-API-Key` header). The `/v1` endpoints always require a key, whether or not `ADMIN_PASSWORD` is set.
+
+**Ask a question** and get an answer with sources:
+
+```bash
+curl -s http://localhost:8080/v1/query \
+  -H "Authorization: Bearer $RAG_KEY" -H "Content-Type: application/json" \
+  -d '{"question": "What does the contract say about termination?", "top_k": 5}'
+```
+
+```json
+{
+  "answer": "The contract can be terminated with 30 days notice [1] ...",
+  "sources": [{"filename": "contract.pdf", "page": 4, "score": 0.83, "text": "...", "doc_id": "...", "chunk": 12}],
+  "timing_ms": {"retrieve": 42, "generate": 1310}
+}
+```
+
+**Retrieval only**, if you want to use the chunks with your own LLM or agent:
+
+```bash
+curl -s http://localhost:8080/v1/retrieve -H "Authorization: Bearer $RAG_KEY" \
+  -H "Content-Type: application/json" -d '{"query": "termination clause", "top_k": 8}'
+```
+
+**Upload PDFs** and **list documents**:
+
+```bash
+curl -s http://localhost:8080/v1/documents -H "Authorization: Bearer $RAG_KEY" -F files=@report.pdf -F files=@manual.pdf
+curl -s http://localhost:8080/v1/documents -H "Authorization: Bearer $RAG_KEY"
+```
+
+FastAPI serves interactive API docs at `/docs`.
+
 ## Admin & diagnostics
 
 The **Admin** page shows:
@@ -53,6 +89,7 @@ The **Admin** page shows:
 - Query stats for the last 24 hours: count, average latency, and errors. A log of recent queries splits each one into retrieval and generation time.
 - A **retrieval debugger** that runs a query against the vector store and shows the chunks and scores, without calling the LLM.
 - An event log of ingestion results, errors, and config changes.
+- API keys: create them, revoke them, and see when each was last used.
 - **Re-index all**, for after you change the chunking or the embedding model.
 
 ## Configuration

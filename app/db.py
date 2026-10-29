@@ -18,6 +18,10 @@ CREATE TABLE IF NOT EXISTS queries (
   id INTEGER PRIMARY KEY AUTOINCREMENT, question TEXT, ts REAL,
   retrieve_ms REAL, generate_ms REAL, total_ms REAL, ok INTEGER, error TEXT
 );
+CREATE TABLE IF NOT EXISTS api_keys (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, prefix TEXT, hash TEXT UNIQUE,
+  created REAL, last_used REAL
+);
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, level TEXT, source TEXT, message TEXT
 );

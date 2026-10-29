@@ -86,10 +86,10 @@ def retrieve(question, k=None):
     return stores.get(cfg).search(vec, k or cfg["rag"]["top_k"])
 
 
-def answer(question):
+def answer(question, k=None):
     t0 = time.time()
     try:
-        hits = retrieve(question)
+        hits = retrieve(question, k)
         t1 = time.time()
         context = "\n\n".join(f"[{n}] ({h['filename']}, page {h['page']})\n{h['text']}"
                               for n, h in enumerate(hits, start=1))

@@ -139,6 +139,16 @@
   <button id="check-llm">Check LLM (uses one API call)</button> <span class="result" id="llm-result"></span>
   <button id="reindex-all">Re-index all documents</button>
 
+  <h2>API keys</h2>
+  <p class="muted small">Use these to call the API at <code id="api-base"></code> (see the README for endpoints).</p>
+  <form id="key-form" class="row">
+    <input id="key-name" placeholder="Key name, e.g. my-app">
+    <button>Create key</button>
+  </form>
+  <p id="new-key" class="small"></p>
+  <table><thead><tr><th>Name</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+    <tbody id="key-rows"></tbody></table>
+
   <h2>Retrieval debugger</h2>
   <form id="debug-form" class="row">
     <input id="debug-q" placeholder="Query to test retrieval">

@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import os
 import platform
 import secrets
@@ -32,9 +33,24 @@ def _startup():
     db.log("info", "app", "started")
 
 
+def _key_hash(key: str) -> str:
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
 @app.middleware("http")
-async def basic_auth(request: Request, call_next):
-    if ADMIN_PASSWORD and request.url.path != "/api/health":
+async def auth(request: Request, call_next):
+    path = request.url.path
+    # Public API: always requires an API key created on the Admin page.
+    if path.startswith("/v1/"):
+        header = request.headers.get("authorization", "")
+        key = header[7:] if header.startswith("Bearer ") else request.headers.get("x-api-key", "")
+        found = key and db.rows("SELECT id FROM api_keys WHERE hash=?", (_key_hash(key),))
+        if not found:
+            return JSONResponse({"error": "Missing or invalid API key"}, status_code=401)
+        db.execute("UPDATE api_keys SET last_used=? WHERE id=?", (time.time(), found[0]["id"]))
+        return await call_next(request)
+    # UI and internal API: optional basic auth.
+    if ADMIN_PASSWORD and path != "/api/health":
         header = request.headers.get("authorization", "")
         ok = False
         if header.startswith("Basic "):
@@ -236,6 +252,31 @@ def status():
     }
 
 
+@app.get("/api/admin/keys")
+def list_keys():
+    return db.rows("SELECT id, name, prefix, created, last_used FROM api_keys ORDER BY id DESC")
+
+
+class KeyName(BaseModel):
+    name: str = "default"
+
+
+@app.post("/api/admin/keys")
+def create_key(body: KeyName):
+    key = "rag_" + secrets.token_urlsafe(32)
+    db.execute("INSERT INTO api_keys (name, prefix, hash, created) VALUES (?,?,?,?)",
+               (body.name, key[:10], _key_hash(key), time.time()))
+    db.log("info", "api", f"API key created: {body.name}")
+    return {"key": key}  # shown once; only the hash is stored
+
+
+@app.delete("/api/admin/keys/{key_id}")
+def delete_key(key_id: int):
+    db.execute("DELETE FROM api_keys WHERE id=?", (key_id,))
+    db.log("info", "api", f"API key {key_id} revoked")
+    return {"ok": True}
+
+
 @app.post("/api/admin/check-llm")
 def check_llm():
     return _check("llm", config.load())
@@ -251,6 +292,46 @@ def events(limit: int = 200, level: str | None = None):
 @app.get("/api/admin/queries")
 def queries(limit: int = 100):
     return db.rows("SELECT * FROM queries ORDER BY id DESC LIMIT ?", (limit,))
+
+
+# ---------- public API (/v1, API-key auth) ----------
+
+class QueryIn(BaseModel):
+    question: str
+    top_k: int | None = None
+
+
+class RetrieveIn(BaseModel):
+    query: str
+    top_k: int | None = None
+
+
+@app.post("/v1/query")
+def v1_query(q: QueryIn):
+    """Retrieve relevant chunks and generate an answer with citations."""
+    try:
+        return rag.answer(q.question, q.top_k)
+    except Exception as e:
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
+
+
+@app.post("/v1/retrieve")
+def v1_retrieve(q: RetrieveIn):
+    """Retrieval only: the top matching chunks, for use with your own LLM."""
+    try:
+        return {"results": rag.retrieve(q.query, q.top_k)}
+    except Exception as e:
+        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
+
+
+@app.get("/v1/documents")
+def v1_documents():
+    return list_documents()
+
+
+@app.post("/v1/documents")
+async def v1_upload(files: list[UploadFile]):
+    return await upload(files)
 
 
 app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")

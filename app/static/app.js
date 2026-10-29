@@ -133,8 +133,25 @@ $("#chat-form").addEventListener("submit", async e => {
 });
 
 // ---------- admin ----------
+async function loadKeys() {
+  $("#api-base").textContent = location.origin + "/v1";
+  const keys = await api("/api/admin/keys");
+  $("#key-rows").innerHTML = keys.map(k => `<tr><td>${esc(k.name)}</td><td><code>${esc(k.prefix)}…</code></td>
+    <td>${fmtTime(k.created)}</td><td>${k.last_used ? fmtTime(k.last_used) : "never"}</td>
+    <td><button class="small-btn" data-revoke="${k.id}">Revoke</button></td></tr>`).join("")
+    || `<tr><td colspan="5" class="muted">No API keys yet.</td></tr>`;
+}
+$("#key-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const { key } = await api("/api/admin/keys", { method: "POST", body: JSON.stringify({ name: $("#key-name").value || "default" }) });
+  $("#new-key").innerHTML = `New key (copy it now, it won't be shown again): <code>${esc(key)}</code>`;
+  $("#key-name").value = ""; loadKeys();
+});
+$("#key-rows").addEventListener("click", async e => {
+  if (e.target.dataset.revoke) { await api("/api/admin/keys/" + e.target.dataset.revoke, { method: "DELETE" }); loadKeys(); }
+});
 async function loadAdmin() {
-  loadEvents(); loadQueries();
+  loadEvents(); loadQueries(); loadKeys();
   $("#cards").innerHTML = "<span class='muted'>Running checks…</span>";
   const s = await api("/api/admin/status");
   const docs = Object.values(s.documents);
