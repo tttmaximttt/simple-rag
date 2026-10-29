@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RAG Studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <strong>RAG Studio</strong>
+  <nav>
+    <a href="#setup">Setup</a>
+    <a href="#documents">Documents</a>
+    <a href="#chat">Chat</a>
+    <a href="#admin">Admin</a>
+  </nav>
+</header>
+
+<main>
+<section id="view-setup" hidden>
+  <h1>Setup</h1>
+  <p class="muted">Choose the components of your RAG pipeline. Use “Test” on each step before saving.</p>
+  <form id="setup-form">
+    <fieldset>
+      <legend>1. Vector database</legend>
+      <label>Type
+        <select name="vector_store.type">
+          <option value="pgvector">PostgreSQL + pgvector (bundled)</option>
+          <option value="qdrant">Qdrant</option>
+          <option value="chroma">Chroma (embedded, no server)</option>
+        </select>
+      </label>
+      <div data-show="vector_store.type=pgvector">
+        <label>Connection string <input name="vector_store.pgvector.dsn"></label>
+      </div>
+      <div data-show="vector_store.type=qdrant">
+        <label>URL <input name="vector_store.qdrant.url"></label>
+        <label>API key (optional) <input name="vector_store.qdrant.api_key" type="password"></label>
+      </div>
+      <div data-show="vector_store.type=chroma">
+        <label>Storage path <input name="vector_store.chroma.path"></label>
+      </div>
+      <label>Collection name <input name="vector_store.collection"></label>
+      <button type="button" data-test="vector_store">Test</button> <span class="result" id="test-vector_store"></span>
+    </fieldset>
+
+    <fieldset>
+      <legend>2. Embeddings</legend>
+      <label>Provider
+        <select name="embeddings.provider">
+          <option value="local">Local (fastembed, CPU, no key)</option>
+          <option value="openai">OpenAI-compatible API</option>
+          <option value="ollama">Ollama</option>
+        </select>
+      </label>
+      <div data-show="embeddings.provider=local">
+        <label>Model <input name="embeddings.local.model"></label>
+      </div>
+      <div data-show="embeddings.provider=openai">
+        <label>API key <input name="embeddings.openai.api_key" type="password"></label>
+        <label>Model <input name="embeddings.openai.model"></label>
+        <label>Base URL <input name="embeddings.openai.base_url"></label>
+      </div>
+      <div data-show="embeddings.provider=ollama">
+        <label>Ollama URL <input name="embeddings.ollama.url"></label>
+        <label>Model <input name="embeddings.ollama.model"></label>
+      </div>
+      <p class="muted small">Changing the embedding model after ingesting requires re-indexing (Admin → Re-index all) into a new collection.</p>
+      <button type="button" data-test="embeddings">Test</button> <span class="result" id="test-embeddings"></span>
+    </fieldset>
+
+    <fieldset>
+      <legend>3. Language model</legend>
+      <label>Provider
+        <select name="llm.provider">
+          <option value="anthropic">Anthropic Claude</option>
+          <option value="openai">OpenAI-compatible API</option>
+          <option value="ollama">Ollama</option>
+        </select>
+      </label>
+      <div data-show="llm.provider=anthropic">
+        <label>API key <input name="llm.anthropic.api_key" type="password"></label>
+        <label>Model <input name="llm.anthropic.model"></label>
+      </div>
+      <div data-show="llm.provider=openai">
+        <label>API key <input name="llm.openai.api_key" type="password"></label>
+        <label>Model <input name="llm.openai.model"></label>
+        <label>Base URL <input name="llm.openai.base_url"></label>
+      </div>
+      <div data-show="llm.provider=ollama">
+        <label>Ollama URL <input name="llm.ollama.url"></label>
+        <label>Model <input name="llm.ollama.model"></label>
+      </div>
+      <label>Temperature <input name="llm.temperature" type="number" step="0.1" min="0" max="1"></label>
+      <button type="button" data-test="llm">Test</button> <span class="result" id="test-llm"></span>
+    </fieldset>
+
+    <fieldset>
+      <legend>4. Retrieval</legend>
+      <div class="row">
+        <label>Chunk size (chars) <input name="rag.chunk_size" type="number" min="100"></label>
+        <label>Chunk overlap <input name="rag.chunk_overlap" type="number" min="0"></label>
+        <label>Top K results <input name="rag.top_k" type="number" min="1" max="50"></label>
+      </div>
+    </fieldset>
+    <button type="submit" class="primary">Save configuration</button> <span class="result" id="save-result"></span>
+  </form>
+</section>
+
+<section id="view-documents" hidden>
+  <h1>Documents</h1>
+  <label id="dropzone">
+    <input type="file" id="file-input" accept="application/pdf" multiple hidden>
+    Drop PDF files here or click to choose
+  </label>
+  <table>
+    <thead><tr><th>File</th><th>Status</th><th>Pages</th><th>Chunks</th><th>Size</th><th>Added</th><th></th></tr></thead>
+    <tbody id="doc-rows"></tbody>
+  </table>
+</section>
+
+<section id="view-chat" hidden>
+  <h1>Chat</h1>
+  <div id="messages"></div>
+  <form id="chat-form">
+    <input id="question" placeholder="Ask something about your documents…" autocomplete="off">
+    <button class="primary">Ask</button>
+  </form>
+</section>
+
+<section id="view-admin" hidden>
+  <h1>Admin & diagnostics <button id="refresh" class="small-btn">Refresh</button></h1>
+  <div class="cards" id="cards"></div>
+  <h2>Components</h2>
+  <table><thead><tr><th>Component</th><th>Status</th><th>Latency</th><th>Detail</th></tr></thead>
+    <tbody id="component-rows"></tbody></table>
+  <button id="check-llm">Check LLM (uses one API call)</button> <span class="result" id="llm-result"></span>
+  <button id="reindex-all">Re-index all documents</button>
+
+  <h2>Retrieval debugger</h2>
+  <form id="debug-form" class="row">
+    <input id="debug-q" placeholder="Query to test retrieval">
+    <input id="debug-k" type="number" value="5" min="1" max="50" style="max-width:5em">
+    <button>Search</button>
+  </form>
+  <div id="debug-hits"></div>
+
+  <h2>Recent queries</h2>
+  <table><thead><tr><th>Time</th><th>Question</th><th>Retrieve</th><th>Generate</th><th>Total</th><th>Result</th></tr></thead>
+    <tbody id="query-rows"></tbody></table>
+
+  <h2>Event log <select id="log-level"><option value="">all</option><option>info</option><option>warn</option><option>error</option></select></h2>
+  <pre id="events"></pre>
+</section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>
