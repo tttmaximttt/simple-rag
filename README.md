@@ -54,7 +54,7 @@ Then pick Ollama for both embeddings and the LLM (URL `http://ollama:11434`).
 
 - The whole web UI and every internal `/api` route sit behind the admin login: setup, documents, chat, the admin page, and API keys. Without a session you only see the login form.
 - **First run:** the app creates the user `admin` with a temporary password, either random and printed to the logs or taken from `ADMIN_PASSWORD`. The first login forces a password change, and until then every other route returns 403.
-- Passwords are stored as scrypt hashes. A session is an HttpOnly, SameSite=Strict cookie (also Secure over HTTPS) that lasts 7 days. Changing the password signs out all other sessions.
+- Passwords are stored as scrypt hashes. A session is an HttpOnly, SameSite=Strict cookie that lasts 7 days. It is also Secure when the request came over HTTPS or `PUBLIC_URL` starts with `https://`. Changing the password signs out all other sessions.
 - After 5 failed logins from one IP, that IP is locked out for 5 minutes. Logins, failed logins, logouts, and password changes go into the event log on the Admin page.
 - **Forgot the password?** Run `docker compose exec app python -m app.auth reset-admin`. It prints a new temporary password, which must again be changed at login.
 - `/v1` and `/mcp` don't use the login. They use API keys, which you create on the Admin page.
@@ -65,7 +65,13 @@ Then pick Ollama for both embeddings and the LLM (URL `http://ollama:11434`).
 PORT=8080 PUBLIC_URL=https://rag.example.com docker compose up -d --build
 ```
 
-Put a TLS reverse proxy (Caddy, nginx, Traefik) in front of it, so that the login cookie and API keys only travel over HTTPS. API keys for model providers are stored in `/data/config.json` on the `rag-data` volume with mode 600, and the UI never shows them back.
+Put a TLS reverse proxy (Caddy, nginx, Traefik) in front of it, so that the login cookie and API keys only travel over HTTPS. When you do:
+
+- Set `FORWARDED_ALLOW_IPS` to the proxy's address (for a proxy container on the same compose network, the docker network range such as `172.16.0.0/12`). The app only trusts `X-Forwarded-For` and `X-Forwarded-Proto` from those addresses, so the per-IP login lockout sees real client IPs. It defaults to `127.0.0.1,::1`; never set it to `*`, or anyone can fake their IP.
+- Forward the original `Host` header (nginx: `proxy_set_header Host $host;`) or set `PUBLIC_URL`. Otherwise the cross-origin check rejects every change made from the web UI with 403.
+- Set `PUBLIC_URL` to the `https://` address so the login cookie is marked Secure even if the proxy doesn't send `X-Forwarded-Proto`.
+
+API keys for model providers are stored in `/data/config.json` on the `rag-data` volume with mode 600, and the UI never shows them back.
 
 ## Using it from your apps (HTTP API)
 

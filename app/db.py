@@ -8,6 +8,7 @@ from .config import DATA_DIR
 
 _DB = DATA_DIR / "meta.sqlite"
 _lock = threading.Lock()
+KEEP_EVENTS = 2000  # per partition: auth events, and all others
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -61,11 +62,15 @@ def rows(sql, args=()):
         return [dict(r) for r in c.execute(sql, args).fetchall()]
 
 
-def execute(sql, args=()):
+def execute(sql, args=()) -> int:
+    """Run one statement and return the number of rows it changed."""
     with conn() as c:
-        c.execute(sql, args)
+        return c.execute(sql, args).rowcount
 
 
 def log(level: str, source: str, message: str):
     execute("INSERT INTO events (ts, level, source, message) VALUES (?,?,?,?)", (time.time(), level, source, message))
-    execute("DELETE FROM events WHERE id < (SELECT MAX(id) - 2000 FROM events)")
+    # Auth events and everything else are capped separately, so neither can push the other out.
+    part = "source = 'auth'" if source == "auth" else "source IS NOT 'auth'"
+    execute(f"DELETE FROM events WHERE {part} AND id <= "
+            f"(SELECT id FROM events WHERE {part} ORDER BY id DESC LIMIT 1 OFFSET {KEEP_EVENTS})")
