@@ -8,3 +8,4 @@ pgvector==0.5.1
 qdrant-client==1.20.0
 chromadb==1.5.9
 fastembed==0.9.1
+tiktoken==0.14.0

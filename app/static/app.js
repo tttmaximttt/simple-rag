@@ -46,12 +46,19 @@ function updateVisibility() {
     div.hidden = form.elements[k].value !== v;
   });
 }
+async function updateTokenHint() {
+  const t = await api("/api/tokenizer/limits", { method: "POST", body: JSON.stringify(formToConfig()) });
+  const asked = Number(form.elements["rag.chunk_tokens"].value);
+  $("#token-hint").textContent = `Tokenizer: ${t.tokenizer}. This embedding model takes about ${t.model_limit} tokens per chunk` +
+    (asked > t.effective_chunk_tokens ? `, so chunks will be capped at ${t.effective_chunk_tokens} tokens.` : ".");
+}
 async function loadSetup() {
   const cfg = await api("/api/config");
   $$("[name]", form).forEach(el => (el.value = get(cfg, el.name) ?? ""));
   updateVisibility();
+  updateTokenHint();
 }
-form.addEventListener("change", updateVisibility);
+form.addEventListener("change", () => { updateVisibility(); updateTokenHint(); });
 $$("[data-test]", form).forEach(btn => btn.addEventListener("click", async () => {
   const out = $("#test-" + btn.dataset.test);
   out.className = "result"; out.textContent = "Testing…";

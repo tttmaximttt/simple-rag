@@ -99,10 +99,11 @@
     <fieldset>
       <legend>4. Retrieval</legend>
       <div class="row">
-        <label>Chunk size (chars) <input name="rag.chunk_size" type="number" min="100"></label>
-        <label>Chunk overlap <input name="rag.chunk_overlap" type="number" min="0"></label>
+        <label>Chunk size (tokens) <input name="rag.chunk_tokens" type="number" min="32"></label>
+        <label>Chunk overlap (tokens) <input name="rag.chunk_overlap_tokens" type="number" min="0"></label>
         <label>Top K results <input name="rag.top_k" type="number" min="1" max="50"></label>
       </div>
+      <p class="muted small" id="token-hint"></p>
     </fieldset>
     <button type="submit" class="primary">Save configuration</button> <span class="result" id="save-result"></span>
   </form>

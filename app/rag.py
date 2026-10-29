@@ -5,7 +5,7 @@ import time
 
 from pypdf import PdfReader
 
-from . import config, db, stores
+from . import config, db, stores, tokenizer
 from .providers import embeddings, llm
 
 SYSTEM_PROMPT = (
@@ -17,28 +17,6 @@ SYSTEM_PROMPT = (
 _jobs: "queue.Queue[str]" = queue.Queue()
 
 
-def chunk_text(text, size, overlap):
-    text = " ".join(text.split())
-    if not text:
-        return []
-    out, i = [], 0
-    while i < len(text):
-        end = min(len(text), i + size)
-        # Prefer to break at a sentence or word boundary.
-        if end < len(text):
-            cut = max(text.rfind(". ", i, end), text.rfind(" ", i, end))
-            if cut > i + size // 2:
-                end = cut + 1
-        out.append(text[i:end].strip())
-        if end >= len(text):
-            break
-        nxt = end - overlap if end - overlap > i else end
-        # Start the next chunk on a word boundary.
-        space = text.find(" ", nxt, end)
-        i = space + 1 if space != -1 else nxt
-    return [c for c in out if c]
-
-
 def ingest(doc_id):
     cfg = config.load()
     doc = db.rows("SELECT * FROM documents WHERE id = ?", (doc_id,))[0]
@@ -47,10 +25,11 @@ def ingest(doc_id):
     db.execute("UPDATE documents SET status='processing', error=NULL, updated=? WHERE id=?", (t0, doc_id))
     try:
         reader = PdfReader(str(path))
-        r = cfg["rag"]
+        size = tokenizer.effective_chunk_tokens(cfg)
+        overlap = int(cfg["rag"]["chunk_overlap_tokens"])
         pieces = []  # (page, chunk_index, text)
         for pno, page in enumerate(reader.pages, start=1):
-            for c in chunk_text(page.extract_text() or "", r["chunk_size"], r["chunk_overlap"]):
+            for c in tokenizer.chunk_text(page.extract_text() or "", size, overlap):
                 pieces.append((pno, len(pieces), c))
         if not pieces:
             raise ValueError("No extractable text (scanned PDF? OCR is not supported yet)")
@@ -69,7 +48,8 @@ def ingest(doc_id):
         dur = time.time() - t0
         db.execute("UPDATE documents SET status='ready', pages=?, chunks=?, updated=?, duration=? WHERE id=?",
                    (len(reader.pages), len(pieces), time.time(), dur, doc_id))
-        db.log("info", "ingest", f"{doc['filename']}: {len(pieces)} chunks from {len(reader.pages)} pages in {dur:.1f}s")
+        db.log("info", "ingest", f"{doc['filename']}: {len(pieces)} chunks of <= {size} tokens "
+               f"from {len(reader.pages)} pages in {dur:.1f}s")
     except Exception as e:  # noqa: BLE001 - surfaced to the UI
         db.execute("UPDATE documents SET status='failed', error=?, updated=? WHERE id=?", (str(e), time.time(), doc_id))
         db.log("error", "ingest", f"{doc['filename']}: {e}")

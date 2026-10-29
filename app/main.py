@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import config, db, rag, stores
+from . import config, db, rag, stores, tokenizer
 from .providers import embeddings, llm
 
 STARTED = time.time()
@@ -53,6 +53,15 @@ async def basic_auth(request: Request, call_next):
 @app.get("/api/health")
 def health():
     return {"ok": True, "configured": config.load()["configured"]}
+
+
+@app.post("/api/tokenizer/limits")
+def token_limits(body: dict | None = None):
+    """Embedding model limit and effective chunk size for (possibly unsaved) settings."""
+    old = config.load()
+    cfg = config._merge(old, config.unredact(body or {}, old))
+    return {"tokenizer": tokenizer.tokenizer_name(), "model_limit": tokenizer.model_limit(cfg),
+            "effective_chunk_tokens": tokenizer.effective_chunk_tokens(cfg)}
 
 
 @app.get("/api/config")
@@ -215,7 +224,9 @@ def status():
         "components": checks,
         "settings": {"vector_store": cfg["vector_store"]["type"], "embeddings": cfg["embeddings"]["provider"],
                      "llm": f"{cfg['llm']['provider']} / {cfg['llm'][cfg['llm']['provider']]['model']}",
-                     **cfg["rag"]},
+                     **cfg["rag"], "tokenizer": tokenizer.tokenizer_name(),
+                     "embedding_token_limit": tokenizer.model_limit(cfg),
+                     "effective_chunk_tokens": tokenizer.effective_chunk_tokens(cfg)},
         "documents": {d["status"]: d for d in docs},
         "vectors": vector_count,
         "queue": rag.queue_size(),

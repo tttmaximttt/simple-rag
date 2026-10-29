@@ -14,7 +14,13 @@ Open http://localhost:8080. The **Setup** page opens first.
 1. **Vector database.** The default is PostgreSQL + pgvector, which is bundled. Its connection string is pre-filled (`postgresql://rag:rag@postgres:5432/rag`). You can also pick Qdrant (`docker compose --profile qdrant up -d`, URL `http://qdrant:6333`) or embedded Chroma, which needs no server.
 2. **Embeddings.** Choose Local (runs on CPU in the container, no key needed, downloads the model on first use), any OpenAI-compatible API, or Ollama.
 3. **LLM.** Choose Anthropic Claude, any OpenAI-compatible API, or Ollama.
-4. **Retrieval.** Set the chunk size, the overlap, and top-K.
+4. **Retrieval.** Set the chunk size and overlap in tokens, and top-K. Chunks are capped at the embedding model's input limit, and the wizard shows the limit.
+
+### Tokenization
+
+Text is chunked by tokens, not characters. Each page is split into sentences, and whole sentences are packed into chunks up to the size limit. A sentence that is longer than the limit is split on token boundaries. The last sentences of each chunk are carried into the next one as overlap. Chunks never cross pages, so each citation points to one page.
+
+Token counts come from tiktoken `cl100k_base`, which is baked into the image. These counts are exact for OpenAI embedding models. Most open models (bge, nomic, and others) use their own tokenizers, which produce more tokens for the same text, so for those models the chunk size is capped at 75% of the model's limit. If tiktoken can't load, the app falls back to an approximate count. The Admin page shows which tokenizer is active.
 
 Press **Test** on each step, then **Save**. Then go to **Documents** and drop PDFs in. Once a file shows `ready`, use **Chat**.
 
