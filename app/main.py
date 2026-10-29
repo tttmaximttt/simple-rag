@@ -147,11 +147,15 @@ def health():
     return {"ok": True, "configured": config.load()["configured"]}
 
 
+def _draft_config(body: dict | None) -> dict:
+    old = config.load()
+    return config._merge(old, config.unredact(body or {}, old))
+
+
 @app.post("/api/tokenizer/limits")
 def token_limits(body: dict | None = None):
     """Embedding model limit and effective chunk size for (possibly unsaved) settings."""
-    old = config.load()
-    cfg = config._merge(old, config.unredact(body or {}, old))
+    cfg = _draft_config(body)
     return {"tokenizer": tokenizer.tokenizer_name(), "model_limit": tokenizer.model_limit(cfg),
             "effective_chunk_tokens": tokenizer.effective_chunk_tokens(cfg)}
 
@@ -163,8 +167,7 @@ def get_config():
 
 @app.put("/api/config")
 def put_config(body: dict):
-    old = config.load()
-    new = config._merge(old, config.unredact(body, old))
+    new = _draft_config(body)
     new["configured"] = True
     config.save(new)
     db.log("info", "setup", f"config saved: store={new['vector_store']['type']} "
@@ -194,9 +197,7 @@ def _check(component, cfg):
 @app.post("/api/test/{component}")
 def test_component(component: str, body: dict | None = None):
     """Test a component with the (possibly unsaved) settings from the wizard."""
-    old = config.load()
-    cfg = config._merge(old, config.unredact(body or {}, old))
-    return _check(component, cfg)
+    return _check(component, _draft_config(body))
 
 
 # ---------- documents ----------
@@ -212,12 +213,13 @@ class TooLarge(Exception):
 
 def _register(filename: str, tmp: Path, size: int) -> dict:
     """Move a downloaded/uploaded temp file into storage and queue it, skipping duplicates."""
-    digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
+    data = tmp.read_bytes()
+    digest = hashlib.sha256(data).hexdigest()
     dup = db.rows("SELECT id, filename FROM documents WHERE sha256=?", (digest,))
     if dup:
         tmp.unlink(missing_ok=True)
         return {"file": filename, "status": "skipped", "reason": f"duplicate of {dup[0]['filename']}"}
-    if tmp.read_bytes()[:5] != b"%PDF-":
+    if data[:5] != b"%PDF-":
         tmp.unlink(missing_ok=True)
         return {"file": filename, "status": "skipped", "reason": "not a PDF"}
     doc_id = uuid.uuid4().hex
@@ -304,8 +306,9 @@ def import_urls(body: UrlList):
     _require_setup()
     urls = [u.strip() for u in body.urls if u.strip()]
     results = list(_pool.map(_download, urls))
-    db.log("info", "import", f"URL import: {sum(r['status'] == 'queued' for r in results)}/{len(urls)} queued")
-    return {"results": results, "queued": sum(r["status"] == "queued" for r in results)}
+    queued = sum(r["status"] == "queued" for r in results)
+    db.log("info", "import", f"URL import: {queued}/{len(urls)} queued")
+    return {"results": results, "queued": queued}
 
 
 @app.post("/api/documents/import-folder")
@@ -326,8 +329,9 @@ def import_folder():
         tmp = config.UPLOAD_DIR / f".tmp-{uuid.uuid4().hex}"
         shutil.copyfile(path, tmp)
         results.append(_register(name, tmp, size))
-    db.log("info", "import", f"folder import: {sum(r['status'] == 'queued' for r in results)}/{len(results)} queued")
-    return {"folder": str(IMPORT_DIR), "results": results, "queued": sum(r["status"] == "queued" for r in results)}
+    queued = sum(r["status"] == "queued" for r in results)
+    db.log("info", "import", f"folder import: {queued}/{len(results)} queued")
+    return {"folder": str(IMPORT_DIR), "results": results, "queued": queued}
 
 
 @app.post("/api/documents/{doc_id}/reindex")
