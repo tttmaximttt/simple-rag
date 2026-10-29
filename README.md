@@ -5,7 +5,7 @@ A self-hosted RAG (retrieval-augmented generation) server you can run with one c
 ## Quick start
 
 ```bash
-git clone <this repo> rag-studio && cd rag-studio
+git clone https://github.com/tttmaximttt/simple-rag && cd simple-rag
 docker compose up -d --build
 ```
 
@@ -121,7 +121,7 @@ Authentication uses an API key from **Admin → API keys**. Send it as `Authoriz
 ### Claude Code
 
 ```bash
-claude mcp add --transport http rag-studio http://localhost:8080/mcp \
+claude mcp add --transport http simple-rag http://localhost:8080/mcp \
   --header "Authorization: Bearer $RAG_KEY"
 ```
 
@@ -134,7 +134,7 @@ claude mcp add --transport http rag-studio http://localhost:8080/mcp \
 ```json
 {
   "mcpServers": {
-    "rag-studio": {
+    "simple-rag": {
       "command": "npx",
       "args": ["-y", "mcp-remote", "http://localhost:8080/mcp", "--header", "Authorization: Bearer ${RAG_KEY}"],
       "env": { "RAG_KEY": "rag_..." }
@@ -155,9 +155,9 @@ curl https://api.anthropic.com/v1/messages \
   -H "anthropic-beta: mcp-client-2025-11-20" -H "content-type: application/json" \
   -d '{
     "model": "claude-opus-5-5", "max_tokens": 4096,
-    "mcp_servers": [{"type": "url", "url": "https://rag.example.com/mcp", "name": "rag-studio",
+    "mcp_servers": [{"type": "url", "url": "https://rag.example.com/mcp", "name": "simple-rag",
                      "authorization_token": "'"$RAG_KEY"'"}],
-    "tools": [{"type": "mcp_toolset", "mcp_server_name": "rag-studio"}],
+    "tools": [{"type": "mcp_toolset", "mcp_server_name": "simple-rag"}],
     "messages": [{"role": "user", "content": "Search my documents for the termination clause and summarize it."}]
   }'
 ```
@@ -180,7 +180,7 @@ curl https://api.openai.com/v1/responses \
   -H "Authorization: Bearer $OPENAI_API_KEY" -H "Content-Type: application/json" \
   -d '{
     "model": "gpt-5",
-    "tools": [{"type": "mcp", "server_label": "rag-studio", "server_url": "https://rag.example.com/mcp",
+    "tools": [{"type": "mcp", "server_label": "simple-rag", "server_url": "https://rag.example.com/mcp",
                "headers": {"Authorization": "Bearer '"$RAG_KEY"'"}, "require_approval": "never"}],
     "input": "Search my documents for the termination clause and summarize it."
   }'
