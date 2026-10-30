@@ -128,6 +128,9 @@
         <label>Chunk overlap (tokens) <input name="rag.chunk_overlap_tokens" type="number" min="0"></label>
         <label>Top K results <input name="rag.top_k" type="number" min="1" max="50"></label>
       </div>
+      <label class="check"><input type="checkbox" name="rag.query_rewrite"> Rewrite questions into search queries
+        in the documents' languages <span class="muted small">(one extra LLM call per question; finds answers in
+        documents written in another language, or that use other words than the question)</span></label>
       <p class="muted small" id="token-hint"></p>
     </fieldset>
     <button type="submit" class="primary">Save configuration</button> <span class="result" id="save-result"></span>

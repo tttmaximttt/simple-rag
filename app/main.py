@@ -481,12 +481,15 @@ def chat(q: Question):
 
 @app.post("/api/admin/retrieve")
 def debug_retrieve(q: Question):
+    """Retrieval as Chat does it, including the rewritten queries when that's on."""
     t0 = time.time()
     try:
-        hits = rag.retrieve(q.question, q.k)
+        cfg = config.load()
+        queries = rag.rewrite(q.question, cfg)[1] if cfg["rag"]["query_rewrite"] else []
+        hits = rag.retrieve(q.question, q.k, queries)
     except Exception as e:
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
-    return {"ms": round((time.time() - t0) * 1000), "hits": hits}
+    return {"ms": round((time.time() - t0) * 1000), "queries": queries, "hits": hits}
 
 
 @app.get("/api/admin/status")
