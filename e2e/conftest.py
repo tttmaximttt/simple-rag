@@ -99,7 +99,8 @@ def admin() -> httpx.Client:
 
 @pytest.fixture(scope="session")
 def api_key(admin) -> str:
-    return admin.post("/api/admin/keys", json={"name": f"e2e-{RUN}"}).json()["key"]
+    # Write scope: the suite uploads and imports documents with it.
+    return admin.post("/api/admin/keys", json={"name": f"e2e-{RUN}", "scope": "write"}).json()["key"]
 
 
 @pytest.fixture(scope="session")

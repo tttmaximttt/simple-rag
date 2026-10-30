@@ -54,7 +54,6 @@ def test_admin_page(ui, lighthouse):
     expect(ui.locator("#cards")).to_contain_text("vectors stored")
     expect(ui.locator("#component-rows")).to_contain_text("vector store")
     expect(ui.locator("#component-rows td.ok")).to_have_count(2, timeout=30_000)
-    expect(ui.locator("#mcp-url")).to_have_text(re.compile(r"^https?://.+/mcp$"))
 
     ui.click("#check-llm")
     expect(ui.locator("#llm-result")).to_contain_text("✓", timeout=120_000)
@@ -66,6 +65,12 @@ def test_admin_page(ui, lighthouse):
     expect(ui.locator("#debug-hits .hit")).to_contain_text("lighthouse.pdf, page 1")
 
     expect(ui.locator("#events")).to_contain_text("[ingest]")
+
+
+def test_connect_page(ui):
+    ui.click("nav a[href='#connect']")
+    expect(ui.locator("#connect-urls tr", has_text="MCP server")).to_contain_text(re.compile(r"https?://.+/mcp"))
+    expect(ui.locator("#connect-clients summary")).to_have_count(9)
 
 
 def test_create_and_revoke_api_key(ui):

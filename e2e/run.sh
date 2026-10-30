@@ -65,7 +65,8 @@ else
   export E2E_VECTOR_STORE=${E2E_VECTOR_STORE:-chroma}
   (cd e2e && exec python fake_models.py --host 127.0.0.1 --port "$FAKE_PORT") > "$WORK/fake-models.log" 2>&1 &
   FAKE_PID=$!
-  DATA_DIR=$WORK/data IMPORT_DIR=$WORK/import ADMIN_PASSWORD=$E2E_ADMIN_PASSWORD \
+  # ALLOW_PRIVATE_URLS: the URL import tests fetch PDFs from the fake model server on localhost.
+  DATA_DIR=$WORK/data IMPORT_DIR=$WORK/import ADMIN_PASSWORD=$E2E_ADMIN_PASSWORD ALLOW_PRIVATE_URLS=1 \
     python -m uvicorn app.main:app --host 127.0.0.1 --port "$PORT" > "$WORK/app.log" 2>&1 &
   APP_PID=$!
   cleanup() {

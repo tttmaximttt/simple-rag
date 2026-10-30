@@ -220,3 +220,51 @@ def test_delete_during_ingest_leaves_no_orphan_vectors(logged_in, doc):
     rag.ingest(doc_id)
     assert not db.rows("SELECT id FROM documents WHERE id=?", (doc_id,))
     assert store.vectors == {}
+
+
+def test_worker_survives_an_ingest_that_raises(monkeypatch):
+    jobs, done = queue.Queue(), threading.Event()
+
+    def ingest(doc_id):
+        if doc_id == "bad":
+            raise RuntimeError("boom")
+        done.set()
+
+    monkeypatch.setattr(rag, "ingest", ingest)
+    t = threading.Thread(target=rag._worker, args=(jobs,), daemon=True)
+    t.start()
+    jobs.put("bad")
+    jobs.put("good")
+    assert done.wait(5) and t.is_alive()
+
+
+def test_ingest_of_a_document_deleted_after_the_claim_just_returns(doc, monkeypatch):
+    doc_id, store, emb = doc
+    real = db.rows
+    monkeypatch.setattr(db, "rows", lambda sql, *a: [] if "SELECT *" in sql else real(sql, *a))
+    rag.ingest(doc_id)
+    assert emb.calls == 0
+
+
+def test_ingest_failing_before_the_document_is_read_is_marked_failed(doc, monkeypatch):
+    doc_id, _, _ = doc
+    monkeypatch.setattr(rag.config, "load", lambda: (_ for _ in ()).throw(OSError("disk")))
+    rag.ingest(doc_id)
+    assert db.rows("SELECT status, error FROM documents WHERE id=?", (doc_id,))[0]["status"] == "failed"
+
+
+def test_a_page_that_cannot_be_read_is_empty(monkeypatch):
+    class Page:
+        def __init__(self, text):
+            self.text = text
+
+        def extract_text(self):
+            if self.text is None:
+                raise ValueError("bad stream")
+            return self.text
+
+    class Reader:
+        pages = [Page("one"), Page(None), Page("three")]
+
+    monkeypatch.setattr(pdftext, "PdfReader", lambda path: Reader())
+    assert pdftext.extract("x.pdf", 0, 3) == ["one", "", "three"]

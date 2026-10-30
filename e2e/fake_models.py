@@ -2,8 +2,9 @@
 
   POST /v1/embeddings        hashed bag-of-words vectors, so passages that share words with the
                              query rank first and retrieval is deterministic
-  POST /v1/chat/completions  "pong" for the health check; otherwise an answer that quotes the
-                             first context passage, so tests can check that retrieval fed the LLM
+  POST /v1/chat/completions  "pong" for the health check; the question itself for a search-query
+                             rewrite; otherwise an answer that quotes the first context passage, so
+                             tests can check that retrieval fed the LLM
   GET  /files/<name>.pdf     a small PDF, for the URL import tests (404 for names starting "missing")
   GET  /health
 
@@ -34,6 +35,9 @@ def chat(messages: list[dict]) -> str:
     user = next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
     if any(m["content"].startswith("Reply with the single word: pong") for m in messages):
         return "pong"
+    if any(m["role"] == "system" and m["content"].startswith("You turn a question into search queries")
+           for m in messages):
+        return f"Question language: English\n{user}"  # rag.rewrite: search with the question as asked
     question = user.rpartition("Question:")[2].strip()
     # rag.answer formats context as "[1] (file, page N)\n<text>\n\n[2] ..."
     first = re.search(r"\[1\] \((.+?), page (\d+)\)\n(.*?)(?:\n\n\[2\]|\n\nQuestion:)", user, re.S)

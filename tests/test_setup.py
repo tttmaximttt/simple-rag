@@ -114,6 +114,18 @@ def test_suggested_collection_replaces_its_own_suffix():
 
 # ---------- one hit per page ----------
 
+@pytest.fixture
+def stored_docs():
+    """The documents the fake stores below return hits for; hits of documents that aren't ready are dropped."""
+    for i in ("a", "b"):
+        db.execute("INSERT OR REPLACE INTO documents (id, filename, size, status, created) VALUES (?,?,?,?,?)",
+                   (i, f"{i}.pdf", 1, "ready", time.time()))
+    yield
+    for i in ("a", "b"):
+        db.execute("DELETE FROM documents WHERE id=?", (i,))
+
+
+@pytest.mark.usefixtures("stored_docs")
 def test_retrieve_merges_chunks_from_the_same_page(monkeypatch):
     hits = [{"score": s, "doc_id": d, "filename": "f", "page": p, "chunk": c, "text": f"t{c}"}
             for s, d, p, c in [(0.9, "a", 1, 2), (0.8, "a", 1, 1), (0.7, "a", 2, 3), (0.6, "b", 1, 0), (0.5, "a", 1, 0)]]
@@ -136,6 +148,7 @@ def test_retrieve_merges_chunks_from_the_same_page(monkeypatch):
         ("a", 1, 0.9, 0, "t0 t1 t2"), ("a", 2, 0.7, 3, "t3")]
 
 
+@pytest.mark.usefixtures("stored_docs")
 def test_retrieve_caps_top_k_and_chunks_per_page(monkeypatch):
     hits = [{"score": 1 - i / 100, "doc_id": "a", "filename": "f", "page": 1, "chunk": i, "text": f"t{i}"}
             for i in range(0, 20, 2)]
@@ -155,7 +168,7 @@ def test_retrieve_caps_top_k_and_chunks_per_page(monkeypatch):
     ("No overlap.", "Next part.", "No overlap. Next part."),
 ])
 def test_join_overlap(a, b, joined):
-    assert rag._join_overlap(a, b) == joined
+    assert rag._join_overlap(a, b, 60) == joined
 
 
 def test_top_k_is_bounded_on_the_api(logged_in):

@@ -3,4 +3,10 @@ data
 .venv
 __pycache__
 import
+**/AGENTS.md
+**/__pycache__
+.omc
+.pytest_cache
+tests
+.env
 e2e

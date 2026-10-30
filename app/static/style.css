@@ -63,3 +63,4 @@ pre { background: var(--panel); border: 1px solid var(--border); border-radius: 
 .client pre { position: relative; white-space: pre-wrap; word-break: break-all; }
 .copy { float: right; margin-left: .5rem; }
 .check { color: var(--text); } .check input { display: inline; width: auto; margin: 0 .4rem 0 0; }
+.row > input.narrow { max-width: 5em; flex: 0 0 5em; }

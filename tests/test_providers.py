@@ -78,3 +78,27 @@ def test_ollama_models_come_from_tags(monkeypatch, module, cls, args):
     provider = getattr(__import__(f"app.providers.{module}", fromlist=[cls]), cls)(*args)
     assert provider.models() == ["llama3.1", "nomic-embed-text"]
     assert seen == ["http://ollama:11434/api/tags"]
+
+
+def test_529_is_retried():
+    assert 529 in providers.RETRY_STATUSES
+
+
+def test_llm_providers_retry_transient_errors(monkeypatch):
+    monkeypatch.setattr(providers.time, "sleep", lambda s: None)
+    anthropic_ok = httpx.Response(200, json={"content": [{"text": "ok"}]}, request=REQ)
+    ollama_ok = httpx.Response(200, json={"message": {"content": "ok"}}, request=REQ)
+    for model, ok in [(llm.AnthropicLLM("k", "m", 0.2), anthropic_ok), (llm.OllamaLLM("http://o", "m", 0.2), ollama_ok),
+                      (llm.OpenAILLM("k", "gpt-4o", "https://x/v1", 0.2), _reply("ok"))]:
+        replies = [httpx.Response(529, request=REQ), ok]
+        monkeypatch.setattr(providers.httpx, "post", lambda url, **kw: replies.pop(0))
+        monkeypatch.setattr(llm, "_DEFAULT_TEMPERATURE_ONLY", set())
+        assert model.complete("s", "u") == "ok" and not replies
+
+
+def test_ollama_embeddings_retry_transient_errors(monkeypatch):
+    from app.providers import embeddings
+    monkeypatch.setattr(providers.time, "sleep", lambda s: None)
+    replies = [httpx.Response(503, request=REQ), httpx.Response(200, json={"embeddings": [[1.0]]}, request=REQ)]
+    monkeypatch.setattr(providers.httpx, "post", lambda url, **kw: replies.pop(0))
+    assert embeddings.OllamaEmbeddings("http://o", "m").embed(["a"]) == [[1.0]]

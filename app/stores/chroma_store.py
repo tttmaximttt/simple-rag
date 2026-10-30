@@ -1,5 +1,7 @@
 import chromadb
 
+from . import dimension_mismatch
+
 
 class ChromaStore:
     """Embedded Chroma, persisted on the app's data volume. No extra container needed."""
@@ -15,7 +17,16 @@ class ChromaStore:
         self.client.heartbeat()
 
     def ensure(self, dim):
-        self._coll()
+        coll = self._coll()
+        n = coll.count()
+        if not n:
+            # an emptied collection may stay locked to its old dimension; start fresh
+            self.client.delete_collection(self.name)
+            self._coll()
+            return
+        have = len(coll.get(limit=1, include=["embeddings"])["embeddings"][0])
+        if have != dim:
+            raise dimension_mismatch(self.name, n, have, dim)
 
     def upsert(self, items):
         self._coll().upsert(

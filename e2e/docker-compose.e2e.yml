@@ -5,6 +5,8 @@ services:
   app:
     environment:
       ADMIN_PASSWORD: ${E2E_ADMIN_PASSWORD:-e2e-temporary-pw}
+      # The URL import tests fetch PDFs from the fake-models container, a private address.
+      ALLOW_PRIVATE_URLS: "1"
     volumes:
       # Replaces ./import, so the folder-import test can drop files in from the host.
       - ${E2E_IMPORT_DIR:?set by e2e/run.sh}:/import:ro

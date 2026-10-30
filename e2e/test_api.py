@@ -29,6 +29,14 @@ def test_every_key_style_works(api_key):
         assert httpx.get(BASE_URL + "/v1/documents", **kw).status_code == 200
 
 
+def test_read_only_keys_cannot_upload(admin):
+    key = admin.post("/api/admin/keys", json={"name": f"read-{RUN}"}).json()["key"]
+    auth = {"Authorization": f"Bearer {key}"}
+    assert httpx.get(BASE_URL + "/v1/documents", headers=auth).status_code == 200
+    r = httpx.post(BASE_URL + "/v1/documents", headers=auth, files=[("files", ("x.pdf", b"%PDF-1.4", "application/pdf"))])
+    assert r.status_code == 403 and r.json() == {"error": "This API key is read-only"}
+
+
 def test_revoked_key_stops_working(admin):
     key = admin.post("/api/admin/keys", json={"name": "to-revoke"}).json()["key"]
     auth = {"Authorization": f"Bearer {key}"}
@@ -89,7 +97,7 @@ def test_url_import(v1):
     assert r.status_code == 200, r.text
     results = {x["url"].rsplit("/", 1)[1]: x for x in r.json()["results"]}
     assert r.json()["queued"] == 1
-    assert results["missing.pdf"]["reason"] == "download failed: HTTP 404"
+    assert results["missing.pdf"]["reason"] == "HTTP 404"
     assert "only http(s)" in results["x.pdf"]["reason"]
     wait_ready(v1, results[f"kestrel-{RUN}.pdf"]["id"])
     hits = v1.post("/v1/retrieve", json={"query": f"kestrel bridges codename kestrel-{RUN}"}).json()["results"]

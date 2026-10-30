@@ -1,8 +1,6 @@
 """Embedding providers. Each exposes embed(texts) -> list[list[float]]."""
 from functools import lru_cache
 
-import httpx
-
 from . import check, ollama_models, openai_model_ids, post_with_retry
 
 
@@ -33,7 +31,7 @@ class OllamaEmbeddings:
         self.url, self.model = url.rstrip("/"), model
 
     def embed(self, texts):
-        r = httpx.post(f"{self.url}/api/embed", json={"model": self.model, "input": texts}, timeout=300)
+        r = post_with_retry(f"{self.url}/api/embed", json={"model": self.model, "input": texts}, timeout=300)
         check(r)
         return r.json()["embeddings"]
 
