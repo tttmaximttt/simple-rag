@@ -7,4 +7,5 @@ import/*
 !import/.gitkeep
 .omc
 .pytest_cache
-AGENTS.mde2e/.work/
+AGENTS.md
+e2e/.work/
