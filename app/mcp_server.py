@@ -5,7 +5,7 @@ from anyio import to_thread
 from mcp.server.mcpserver import MCPServer
 from pypdf import PdfReader
 
-from . import config, db, rag
+from . import config, db, pdftext, rag
 
 mcp = MCPServer(
     "RAG Studio",
@@ -38,7 +38,7 @@ def _page_text(id_):
     if not 1 <= p <= len(reader.pages):
         raise ValueError(f"Page {p} out of range")
     return {"id": id_, "title": f"{rows[0]['filename']} (page {p})",
-            "text": reader.pages[p - 1].extract_text() or "", "url": f"rag://{id_}",
+            "text": pdftext.clean_text(reader.pages[p - 1].extract_text() or ""), "url": f"rag://{id_}",
             "metadata": {"filename": rows[0]["filename"], "page": p, "pages": len(reader.pages)}}
 
 

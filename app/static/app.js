@@ -10,7 +10,8 @@ async function api(path, opts = {}) {
   if (!r.ok) {
     if (r.status === 401 && !path.startsWith("/api/auth/")) showAuth("login");
     if (r.status === 403 && /temporary password/.test(body.error)) showAuth("password");
-    throw new Error(body.error || body.detail || r.statusText);
+    const detail = typeof body.detail === "object" && !Array.isArray(body.detail) ? body.detail : null;
+    throw Object.assign(new Error(body.error || detail?.message || body.detail || r.statusText), { status: r.status, detail });
   }
   return body;
 }
@@ -169,14 +170,38 @@ $$("[data-test]", form).forEach(btn => btn.addEventListener("click", async () =>
     out.textContent = r.ok ? `✓ ${r.detail} (${r.ms} ms)` : `✗ ${r.error}`;
   } catch (e) { out.className = "result bad"; out.textContent = "✗ " + e.message; }
 }));
-form.addEventListener("submit", async e => {
-  e.preventDefault();
+let saving = false;
+async function saveConfig(reindex) {
+  if (saving) return;  // a double click must not queue every document twice
   const out = $("#save-result");
+  const body = formToConfig();
+  if (reindex !== undefined) body.reindex = reindex;
+  saving = true;
+  $$("button", out).concat($$('button[type="submit"]', form)).forEach(b => (b.disabled = true));
   try {
-    await api("/api/config", { method: "PUT", body: JSON.stringify(formToConfig()) });
-    out.className = "result ok"; out.textContent = "Saved. You can upload documents now.";
-  } catch (err) { out.className = "result bad"; out.textContent = err.message; }
-});
+    await api("/api/config", { method: "PUT", body: JSON.stringify(body) });
+    out.className = "result ok";
+    out.textContent = reindex ? "Saved. Re-indexing all documents; see Documents for progress." : "Saved. You can upload documents now.";
+  } catch (err) {
+    out.className = "result bad";
+    out.textContent = err.message;
+    const d = err.detail;
+    if (d?.code !== "reindex_required") return;
+    // The stored vectors no longer match: offer to re-index, into a new collection if the model changed.
+    const btn = (label, onclick) => Object.assign(document.createElement("button"),
+      { type: "button", className: "small-btn", textContent: label, onclick });
+    out.append(" ", btn(d.collection ? `Use collection “${d.collection}” and re-index ${d.documents} documents`
+                                     : `Save and re-index ${d.documents} documents`, () => {
+      if (d.collection) form.elements["vector_store.collection"].value = d.collection;
+      saveConfig(true);
+    }));
+    if (!d.collection) out.append(" ", btn("Save without re-indexing", () => saveConfig(false)));
+  } finally {
+    saving = false;
+    $('button[type="submit"]', form).disabled = false;
+  }
+}
+form.addEventListener("submit", e => { e.preventDefault(); saveConfig(); });
 
 // ---------- documents ----------
 const statusClass = { ready: "ok", failed: "bad", processing: "warn", queued: "muted", cancelled: "muted" };

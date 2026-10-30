@@ -46,13 +46,18 @@ def doc(monkeypatch):
     db.execute("INSERT INTO documents (id, filename, size, status, created, updated) VALUES (?,?,?,?,?,?)",
                (doc_id, "manual.pdf", 1, "queued", now, now))
     monkeypatch.setattr(pdftext, "page_count", lambda path: 40)
-    monkeypatch.setattr(pdftext, "extract", lambda path, a, b: [f"Page {i} text. " * 200 for i in range(a, b)])
+    monkeypatch.setattr(pdftext, "extract", lambda path, a, b: [f"Page {_word(i)} text. " * 200 for i in range(a, b)])
     monkeypatch.setattr(rag, "EXTRACT_PROCS", 1)  # no worker processes in tests
     store, emb = FakeStore(), FakeEmbeddings()
     monkeypatch.setattr(rag.stores, "get", lambda cfg: store)
     monkeypatch.setattr(rag.embeddings, "get", lambda cfg: emb)
     yield doc_id, store, emb
     db.execute("DELETE FROM documents WHERE id=?", (doc_id,))
+
+
+def _word(i):
+    # Letters, not digits: page text that differs only in numbers counts as a running header.
+    return chr(97 + i // 26) + chr(97 + i % 26)
 
 
 def _status(doc_id):

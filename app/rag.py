@@ -22,6 +22,8 @@ _jobs: "queue.Queue[str]" = queue.Queue()
 EXTRACT_PROCS = min(4, os.cpu_count() or 1)
 PAGES_PER_TASK = 16
 EMBED_BATCH = 64
+MAX_TOP_K = 50
+CHUNKS_PER_PAGE = 3
 _progress: dict = {}  # the document being ingested: doc_id, stage, done, total
 
 
@@ -121,7 +123,7 @@ def ingest(doc_id):
     cfg = config.load()
     doc = db.rows("SELECT * FROM documents WHERE id = ?", (doc_id,))[0]
     try:
-        texts = _read_pages(doc_id, str(config.UPLOAD_DIR / f"{doc_id}.pdf"))
+        texts = pdftext.clean_pages(_read_pages(doc_id, str(config.UPLOAD_DIR / f"{doc_id}.pdf")))
         size = tokenizer.effective_chunk_tokens(cfg)
         overlap = int(cfg["rag"]["chunk_overlap_tokens"])
         pieces = []  # (page, chunk_index, text)
@@ -200,9 +202,36 @@ def start_worker():
 
 
 def retrieve(question, k=None):
+    """The k best-matching pages. Overlapping chunks often match together, so several chunks are fetched per
+    page wanted and those from one page (up to CHUNKS_PER_PAGE) are merged into a single hit with the best score."""
     cfg = config.load()
+    k = max(1, min(int(k or cfg["rag"]["top_k"]), MAX_TOP_K))  # MCP clients pass top_k unchecked
     vec = embeddings.get(cfg).embed([question])[0]
-    return stores.get(cfg).search(vec, k or cfg["rag"]["top_k"])
+    pages = {}
+    for h in stores.get(cfg).search(vec, k * CHUNKS_PER_PAGE):  # best first
+        key = (h["doc_id"], h["page"])
+        if key in pages:
+            if len(pages[key]) < CHUNKS_PER_PAGE:
+                pages[key].append(h)
+        elif len(pages) < k:
+            pages[key] = [h]
+    hits = []
+    for chunks in pages.values():
+        in_order = sorted(chunks, key=lambda c: c["chunk"])
+        text = in_order[0]["text"]
+        for prev, c in zip(in_order, in_order[1:]):
+            text = _join_overlap(text, c["text"]) if c["chunk"] == prev["chunk"] + 1 else f"{text}\n…\n{c['text']}"
+        hits.append({**chunks[0], "chunk": in_order[0]["chunk"], "text": text})
+    return hits
+
+
+def _join_overlap(a: str, b: str) -> str:
+    """Join consecutive chunks without repeating the sentences the second one carries over from the first."""
+    for i in range(min(len(a), len(b)), 0, -1):
+        # The carried-over part is whole sentences, so it starts at a word in a and ends at one in b.
+        if a.endswith(b[:i]) and (i == len(a) or a[-i - 1] == " ") and (i == len(b) or b[i] == " "):
+            return a + b[i:]
+    return f"{a} {b}"
 
 
 def answer(question, k=None):
