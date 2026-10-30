@@ -7,11 +7,18 @@ from pypdf import PdfReader
 
 from . import config, db, pdftext, rag
 
+MAX_QUERY_CHARS = 4000  # also the limit on the HTTP API's questions
+
 mcp = MCPServer(
     "RAG Studio",
     instructions="Search and cite the user's uploaded PDF documents. Use `search` to find relevant "
                  "passages, `fetch` to read a full page, and `ask` for a generated answer with sources.",
 )
+
+
+def _check_length(name, text):
+    if len(text) > MAX_QUERY_CHARS:
+        raise ValueError(f"The {name} is too long: at most {MAX_QUERY_CHARS} characters")
 
 
 def _hit_id(h):
@@ -24,6 +31,7 @@ async def search(query: str, top_k: int = 8, rewrite: bool | None = None) -> dic
     that can be passed to `fetch` to read the whole page. Documents may be in another language than the
     query (see `list_documents`); unless `rewrite` is false or the server turned it off, the server also
     searches with the query reworded and translated into the documents' languages, listed in `queries`."""
+    _check_length("query", query)
     _, queries, hits = await to_thread.run_sync(rag.search, query, top_k, rewrite)
     return {"queries": queries,
             "results": [{"id": _hit_id(h), "title": f"{h['filename']} (page {h['page']})",
@@ -54,6 +62,7 @@ async def fetch(id: str) -> dict:
 @mcp.tool()
 async def ask(question: str, top_k: int = 5) -> dict:
     """Answer a question from the documents using the server's configured LLM, with sources."""
+    _check_length("question", question)
     r = await to_thread.run_sync(rag.answer, question, top_k)
     return {"answer": r["answer"], "sources": [
         {"id": _hit_id(h), "filename": h["filename"], "page": h["page"]} for h in r["sources"]]}

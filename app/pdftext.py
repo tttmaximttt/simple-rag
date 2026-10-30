@@ -13,7 +13,15 @@ def page_count(path: str) -> int:
 def extract(path: str, start: int, stop: int) -> list[str]:
     """Text of pages [start, stop), zero-based."""
     reader = PdfReader(path)
-    return [reader.pages[i].extract_text() or "" for i in range(start, stop)]
+    return [_page_text(reader, i) for i in range(start, stop)]
+
+
+def _page_text(reader, i: int) -> str:
+    """One malformed page shouldn't fail the whole document; it just contributes no text."""
+    try:
+        return reader.pages[i].extract_text() or ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 _PRIVATE_USE = re.compile("[\ue000-\uf8ff]")

@@ -1,7 +1,7 @@
 """Chat model providers. Each exposes complete(system, user) -> str."""
 import httpx
 
-from . import check, ollama_models, openai_model_ids
+from . import check, ollama_models, openai_model_ids, post_with_retry
 
 
 class AnthropicLLM:
@@ -9,7 +9,7 @@ class AnthropicLLM:
         self.api_key, self.model, self.temperature = api_key, model, temperature
 
     def complete(self, system, user):
-        r = httpx.post("https://api.anthropic.com/v1/messages", timeout=180, headers={
+        r = post_with_retry("https://api.anthropic.com/v1/messages", timeout=180, headers={
             "x-api-key": self.api_key, "anthropic-version": "2023-06-01"}, json={
             "model": self.model, "max_tokens": 2048, "temperature": self.temperature,
             "system": system, "messages": [{"role": "user", "content": user}]})
@@ -40,7 +40,7 @@ class OpenAILLM:
         return check(self._post(body)).json()["choices"][0]["message"]["content"]
 
     def _post(self, body):
-        return httpx.post(f"{self.base_url}/chat/completions", headers=self.headers, timeout=180, json=body)
+        return post_with_retry(f"{self.base_url}/chat/completions", headers=self.headers, timeout=180, json=body)
 
     def models(self):
         # OpenAI's list includes models that /chat/completions can't serve: embedding, audio, image, video,
@@ -58,7 +58,7 @@ class OllamaLLM:
         self.url, self.model, self.temperature = url.rstrip("/"), model, temperature
 
     def complete(self, system, user):
-        r = httpx.post(f"{self.url}/api/chat", timeout=600, json={
+        r = post_with_retry(f"{self.url}/api/chat", timeout=600, json={
             "model": self.model, "stream": False, "options": {"temperature": self.temperature},
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]})
         check(r)

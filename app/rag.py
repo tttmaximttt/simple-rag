@@ -130,9 +130,13 @@ def ingest(doc_id):
     if not db.execute("UPDATE documents SET status='processing', error=NULL, updated=? WHERE id=? AND status='queued'",
                       (t0, doc_id)):
         return
-    cfg = config.load()
-    doc = db.rows("SELECT * FROM documents WHERE id = ?", (doc_id,))[0]
+    cfg = doc = None
     try:
+        cfg = config.load()
+        rows = db.rows("SELECT * FROM documents WHERE id = ?", (doc_id,))
+        if not rows:
+            return
+        doc = rows[0]
         texts = pdftext.clean_pages(_read_pages(doc_id, str(config.UPLOAD_DIR / f"{doc_id}.pdf")))
         size = tokenizer.effective_chunk_tokens(cfg)
         overlap = int(cfg["rag"]["chunk_overlap_tokens"])
@@ -154,16 +158,21 @@ def ingest(doc_id):
         db.log("info", "ingest", f"{doc['filename']}: {len(pieces)} chunks of <= {size} tokens "
                f"from {len(texts)} pages in {dur:.1f}s")
     except Exception as e:  # noqa: BLE001 - surfaced to the UI
-        # Remove the vectors whatever happened: a cancelled or failed document shouldn't be searchable from a
-        # partial index, and a deleted one mustn't leave orphans.
-        _drop_vectors(cfg, doc_id, doc["filename"])
-        # Only mark it failed if nobody cancelled, re-queued or deleted it meanwhile.
-        if not isinstance(e, Cancelled) and db.execute(
-                "UPDATE documents SET status='failed', error=?, chunks=NULL, updated=? WHERE id=? AND status='processing'",
-                (str(e), time.time(), doc_id)):
-            db.log("error", "ingest", f"{doc['filename']}: {e}")
-        else:
-            db.log("info", "ingest", f"{doc['filename']}: stopped after {time.time() - t0:.1f}s")
+        name = doc["filename"] if doc else doc_id
+        try:
+            # Remove the vectors whatever happened: a cancelled or failed document shouldn't be searchable from a
+            # partial index, and a deleted one mustn't leave orphans.
+            if cfg:
+                _drop_vectors(cfg, doc_id, name)
+            # Only mark it failed if nobody cancelled, re-queued or deleted it meanwhile.
+            if not isinstance(e, Cancelled) and db.execute(
+                    "UPDATE documents SET status='failed', error=?, chunks=NULL, updated=? WHERE id=? AND status='processing'",
+                    (str(e), time.time(), doc_id)):
+                db.log("error", "ingest", f"{name}: {e}")
+            else:
+                db.log("info", "ingest", f"{name}: stopped after {time.time() - t0:.1f}s")
+        except Exception:  # noqa: BLE001 - the worker must survive; a restart re-queues what is left processing
+            pass
     finally:
         _progress = {}
 
@@ -195,13 +204,19 @@ def queue_size():
     return db.rows("SELECT COUNT(*) n FROM documents WHERE status='queued'")[0]["n"]
 
 
-def _worker():
+def _worker(jobs=None):
+    jobs = _jobs if jobs is None else jobs
     while True:
-        doc_id = _jobs.get()
+        doc_id = jobs.get()
         try:
             ingest(doc_id)
+        except Exception as e:  # noqa: BLE001 - one bad document must not end ingestion for good
+            try:
+                db.log("error", "ingest", f"{doc_id}: {e}")
+            except Exception:  # noqa: BLE001 - e.g. the database is locked; logging must not end the worker either
+                pass
         finally:
-            _jobs.task_done()
+            jobs.task_done()
 
 
 def start_worker():
@@ -236,32 +251,43 @@ def rewrite(question, cfg) -> tuple[str | None, list[str]]:
     except Exception as e:  # noqa: BLE001 - searching with the question alone still works
         db.log("warn", "query", f"could not rewrite the question for search: {e}")
         return None, []
+    if not isinstance(reply, str) or not reply.strip():  # e.g. OpenAI's content: null
+        return None, []
+    shared = _shared_names([r["filename"] for r in _ready_docs()])
     language, groups = None, [[]]
     for line in reply.splitlines():
-        line = line.strip().lstrip("-*•0123456789.) ").strip('"*')
+        line = re.sub(r"^\s*(?:[-*•]+|\d+[.)])\s+", "", line).strip().strip('"*').strip()
         head, _, rest = line.partition(":")
-        if head.lower() == "question language" and language is None:
+        head, rest = head.strip("* ").lower(), rest.strip("* ")
+        if head == "question language" and language is None:
             # It goes into the answer prompt, so take only something shaped like a language name.
-            name = rest.strip().rstrip(".")
+            name = rest.rstrip(".")
             language = name if re.fullmatch(r"[^\W\d_]+(?:[ -][^\W\d_]+)?", name) else ""
-        elif rest.strip() == "" and line.endswith(":") or head.lower() == "language":
+        elif rest == "" and line.endswith(":") or head == "language":
             groups.append([])  # a heading such as "Spanish:" starts another language's queries
         elif line and line != question:
             groups[-1].append(line[:200])
     # Take queries round-robin across headed groups, so one language can't use up the limit.
-    queries = (_without_shared_names(q) for row in zip_longest(*groups) for q in row if q)
+    queries = (_without_shared_names(q, shared) for row in zip_longest(*groups) for q in row if q)
     return language or None, list(dict.fromkeys(q for q in queries if q and q != question))[:MAX_QUERIES]
 
 
-def _without_shared_names(query):
-    """Drop words found in every document's filename, like the product name all of them are about: they match
+def _ready_docs():
+    return db.rows("SELECT id, filename FROM documents WHERE status='ready'")
+
+
+def _shared_names(names) -> set[str]:
+    """Words found in every document's filename, like the product name all of them are about: they match
     every page and push the specific ones out. Words only some filenames share (a model variant) still tell
-    documents apart, so they stay. The rewrite prompt asks for this too, but models don't always obey."""
-    names = [r["filename"] for r in db.rows("SELECT filename FROM documents WHERE status='ready'")]
+    documents apart, so they aren't included."""
     if len(names) < 2:
-        return query
+        return set()
     words = Counter(w for n in names for w in set(re.findall(r"[^\W\d_]{3,}", n.lower())))
-    shared = {w for w, c in words.items() if c == len(names)}
+    return {w for w, c in words.items() if c == len(names)}
+
+
+def _without_shared_names(query, shared):
+    """Drop the words every filename shares. The rewrite prompt asks for this too, but models don't always obey."""
     kept = [w for w in query.split() if w.lower().strip(".,;:!?") not in shared]
     return " ".join(kept) or query
 
@@ -273,8 +299,12 @@ def retrieve(question, k=None, queries=()):
     cfg = config.load()
     k = max(1, min(int(k or cfg["rag"]["top_k"]), MAX_TOP_K))  # MCP clients pass top_k unchecked
     store = stores.get(cfg)
-    searches = [_without_shared_names(question), *queries]
-    results = [store.search(vec, k * CHUNKS_PER_PAGE) for vec in embeddings.get(cfg).embed(searches)]
+    ready = _ready_docs()
+    searches = [_without_shared_names(question, _shared_names([d["filename"] for d in ready])), *queries]
+    ids = {d["id"] for d in ready}
+    # Vectors can outlive their document (deleted while the store was down, an old collection): don't return them.
+    results = [[h for h in hits if h["doc_id"] in ids]
+               for hits in (store.search(vec, k * CHUNKS_PER_PAGE) for vec in embeddings.get(cfg).embed(searches))]
     # Reciprocal rank fusion: rank by how high each query ranked a chunk, not by raw score, so a page that one
     # specific query puts first isn't crowded out by pages that match every query a little.
     best, fused = {}, {}
@@ -297,19 +327,23 @@ def retrieve(question, k=None, queries=()):
                 pages[key].append(h)
         elif len(pages) < k:
             pages[key] = [h]
+    overlap = int(cfg["rag"]["chunk_overlap_tokens"])
     hits = []
     for chunks in pages.values():
         in_order = sorted(chunks, key=lambda c: c["chunk"])
         text = in_order[0]["text"]
         for prev, c in zip(in_order, in_order[1:]):
-            text = _join_overlap(text, c["text"]) if c["chunk"] == prev["chunk"] + 1 else f"{text}\n…\n{c['text']}"
-        hits.append({**chunks[0], "chunk": in_order[0]["chunk"], "text": text})
+            text = _join_overlap(text, c["text"], overlap) if c["chunk"] == prev["chunk"] + 1 else f"{text}\n…\n{c['text']}"
+        hits.append({**chunks[0], "score": max(c["score"] for c in chunks), "chunk": in_order[0]["chunk"], "text": text})
     return hits
 
 
-def _join_overlap(a: str, b: str) -> str:
-    """Join consecutive chunks without repeating the sentences the second one carries over from the first."""
-    for i in range(min(len(a), len(b)), 0, -1):
+def _join_overlap(a: str, b: str, overlap_tokens: int) -> str:
+    """Join consecutive chunks without repeating the sentences the second one carries over from the first.
+    Chunks made without overlap are just joined, and a match can't be longer than the overlap allows."""
+    if overlap_tokens <= 0:
+        return f"{a} {b}"
+    for i in range(min(len(a), len(b), overlap_tokens * 8), 0, -1):
         # The carried-over part is whole sentences, so it starts at a word in a and ends at one in b.
         if a.endswith(b[:i]) and (i == len(a) or a[-i - 1] == " ") and (i == len(b) or b[i] == " "):
             return a + b[i:]

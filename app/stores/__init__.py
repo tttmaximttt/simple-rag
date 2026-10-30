@@ -11,6 +11,12 @@ Payload keys: doc_id, filename, page, chunk, text.
 """
 
 
+def dimension_mismatch(collection, n, have, dim):
+    """The error ensure(dim) raises when a collection that holds vectors was made with another dimension."""
+    return ValueError(f"Collection {collection} holds {n} vectors of dimension {have}, "
+                      f"but the embedding model makes {dim}. Use a new collection name and re-index.")
+
+
 def get(cfg):
     v = cfg["vector_store"]
     t, coll = v["type"], v["collection"]

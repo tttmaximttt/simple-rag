@@ -151,6 +151,7 @@ async function refreshModels() {
       if (p.key !== key) return;  // settings changed while loading
       p.models = r.ok ? r.models : null;
       p.error = r.ok ? "" : r.error;
+      if (!r.ok) p.key = null;  // retry on the next change or visit
     }
     renderPicker(p);
   }));
@@ -209,6 +210,7 @@ form.addEventListener("submit", e => { e.preventDefault(); saveConfig(); });
 // ---------- documents ----------
 const statusClass = { ready: "ok", failed: "bad", processing: "warn", queued: "muted", cancelled: "muted" };
 const active = d => d.status === "queued" || d.status === "processing";
+const onDocumentsView = () => !$("#view-documents").hidden;
 function statusCell(d) {
   const p = d.progress;
   if (p) {
@@ -229,14 +231,20 @@ async function loadDocuments() {
         <button class="small-btn" data-del="${d.id}">Delete</button></td></tr>`).join("")
     || `<tr><td colspan="7" class="muted">No documents yet.</td></tr>`;
   clearInterval(docTimer);
-  if (docs.some(active)) docTimer = setInterval(loadDocuments, 2000);
+  if (docs.some(active) && onDocumentsView()) docTimer = setInterval(loadDocuments, 2000);
 }
 $("#doc-rows").addEventListener("click", async e => {
   const { del, reindex, cancel } = e.target.dataset;
-  if (del) await api("/api/documents/" + del, { method: "DELETE" });
-  if (reindex) await api(`/api/documents/${reindex}/reindex`, { method: "POST" });
-  if (cancel) await api(`/api/documents/${cancel}/cancel`, { method: "POST" }).catch(() => {});
-  if (del || reindex || cancel) loadDocuments();
+  if (!(del || reindex || cancel)) return;
+  const status = $("#doc-status");
+  if (del && !confirm(`Delete ${e.target.closest("tr").cells[0].textContent} and its vectors?`)) return;
+  status.textContent = "";
+  try {
+    if (del) await api("/api/documents/" + del, { method: "DELETE" });
+    if (reindex) await api(`/api/documents/${reindex}/reindex`, { method: "POST" });
+    if (cancel) await api(`/api/documents/${cancel}/cancel`, { method: "POST" });
+  } catch (err) { status.textContent = err.message; }
+  loadDocuments();
 });
 // Upload one file per request, a few at a time, so each file gets its own progress bar.
 const UPLOAD_CONCURRENCY = 3;
@@ -276,7 +284,7 @@ async function pump() {
   if (pumping) return; pumping = true;
   const worker = async () => {
     let u;
-    while ((u = uploads.find(x => x.state === "waiting"))) { await sendOne(u); renderUploads(); loadDocuments(); }
+    while ((u = uploads.find(x => x.state === "waiting"))) { await sendOne(u); renderUploads(); if (onDocumentsView()) loadDocuments(); }
   };
   await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, worker));
   pumping = false;
@@ -385,7 +393,7 @@ const CLIENTS = [
     text: "Ask a question and get an answer with sources, or fetch matching passages to use with your own LLM.",
     code: (u, k) => `# Answer with sources\ncurl -s ${u}/v1/query -H "Authorization: Bearer ${k}" \\\n  -H "Content-Type: application/json" -d '{"question": "How long does charging take?", "top_k": 5}'\n\n` +
       `# Matching passages only\ncurl -s ${u}/v1/retrieve -H "Authorization: Bearer ${k}" \\\n  -H "Content-Type: application/json" -d '{"query": "charging time", "top_k": 8}'\n\n` +
-      `# Upload PDFs, list documents\ncurl -s ${u}/v1/documents -H "Authorization: Bearer ${k}" -F files=@manual.pdf\ncurl -s ${u}/v1/documents -H "Authorization: Bearer ${k}"` },
+      `# Upload PDFs (needs a write key: create one under Admin -> API keys)\ncurl -s ${u}/v1/documents -H "Authorization: Bearer ${k}" -F files=@manual.pdf\n\n# List documents\ncurl -s ${u}/v1/documents -H "Authorization: Bearer ${k}"` },
   { name: "Python", where: "any app or script", text: "With httpx or requests:",
     code: (u, k) => `import httpx\n\nRAG = "${u}/v1"\nHEADERS = {"Authorization": "Bearer ${k}"}\n\n` +
       `r = httpx.post(f"{RAG}/query", headers=HEADERS, json={"question": "How long does charging take?"}, timeout=120)\n` +
@@ -441,7 +449,7 @@ async function loadConnect() {
 }
 $("#connect-key-form").addEventListener("submit", async e => {
   e.preventDefault();
-  const { key } = await api("/api/admin/keys", { method: "POST", body: JSON.stringify({ name: $("#connect-key-name").value || "connect" }) });
+  const { key } = await api("/api/admin/keys", { method: "POST", body: JSON.stringify({ name: $("#connect-key-name").value || "connect", scope: "read" }) });
   connectKey = key;
   $("#connect-key").replaceChildren("New key, filled into the examples below (copy it now, it won't be shown again): ",
     Object.assign(document.createElement("code"), { textContent: key }), " ", copyButton(() => key));
@@ -453,15 +461,15 @@ $("#connect-key-form").addEventListener("submit", async e => {
 async function loadKeys() {
   const keys = await api("/api/admin/keys");
   $("#key-rows").innerHTML = keys.map(k => `<tr><td>${esc(k.name)}</td><td><code>${esc(k.prefix)}…</code></td>
-    <td>${fmtTime(k.created)}</td><td>${k.last_used ? fmtTime(k.last_used) : "never"}</td>
+    <td>${esc(k.scope || "read")}</td><td>${fmtTime(k.created)}</td><td>${k.last_used ? fmtTime(k.last_used) : "never"}</td>
     <td><button class="small-btn" data-revoke="${k.id}">Revoke</button></td></tr>`).join("")
-    || `<tr><td colspan="5" class="muted">No API keys yet.</td></tr>`;
+    || `<tr><td colspan="6" class="muted">No API keys yet.</td></tr>`;
 }
 $("#key-form").addEventListener("submit", async e => {
   e.preventDefault();
-  const { key } = await api("/api/admin/keys", { method: "POST", body: JSON.stringify({ name: $("#key-name").value || "default" }) });
+  const { key } = await api("/api/admin/keys", { method: "POST", body: JSON.stringify({ name: $("#key-name").value || "default", scope: $("#key-write").checked ? "write" : "read" }) });
   $("#new-key").innerHTML = `New key (copy it now, it won't be shown again): <code>${esc(key)}</code>`;
-  $("#key-name").value = ""; loadKeys();
+  $("#key-name").value = ""; $("#key-write").checked = false; loadKeys();
 });
 $("#key-rows").addEventListener("click", async e => {
   if (e.target.dataset.revoke) { await api("/api/admin/keys/" + e.target.dataset.revoke, { method: "DELETE" }); loadKeys(); }

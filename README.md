@@ -46,7 +46,17 @@ While a document is indexed, the Documents page shows its progress (pages read, 
 - **A server folder:** copy PDFs into `./import` next to `docker-compose.yml` (mounted read-only at `/import`), then click **Import from server folder**. You can run it again any time, and only new files are added.
 - **The API:** send several `-F files=@...` fields in one `POST /v1/documents` request.
 
-Duplicates are detected by content hash and skipped. So are files that aren't real PDFs and files over `MAX_UPLOAD_MB`. Each one is reported with the reason.
+Duplicates are detected by content hash and skipped. So are files that aren't real PDFs and files over `MAX_UPLOAD_MB`. Each one is reported with the reason. A single request accepts a limited number of files (the UI sends one file per request, so folders of any size work), and a request whose body exceeds `MAX_REQUEST_MB` is rejected with 413 as soon as that is known.
+
+Limits:
+
+- An upload request takes at most 100 files (more returns 400). The UI sends one file per request, so folders of any size work.
+- An upload request's whole body is capped at `MAX_REQUEST_MB` (1024 by default). A larger `Content-Length` gets 413 before the body is read, and a chunked body gets 413 as soon as it passes the cap.
+- URL import takes at most 100 URLs per request, and each download stops after 120 s in total, redirects, connecting and headers included.
+- URL import refuses private, loopback, link-local and reserved addresses on every redirect hop, unless `ALLOW_PRIVATE_URLS=1`. Skipped URLs get a generic reason such as `download failed`, `took too long`, `HTTP 404` or `invalid URL`. A blocked address, a host that doesn't resolve and a refused connection all read `download failed`, so the reason doesn't reveal which internal names exist; the event log has the details.
+- Questions and search queries are capped at 4000 characters.
+- The queries log keeps the newest 5000 rows.
+- Every response carries `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options: nosniff` and `Referrer-Policy` headers.
 
 ### Fully local, with no API keys
 
@@ -64,8 +74,11 @@ Then pick Ollama for both embeddings and the LLM (URL `http://ollama:11434`).
 - **First run:** the app creates the user `admin` with a temporary password, either random and printed to the logs or taken from `ADMIN_PASSWORD`. The first login forces a password change, and until then every other route returns 403.
 - Passwords are stored as scrypt hashes. A session is an HttpOnly, SameSite=Strict cookie that lasts 7 days. It is also Secure when the request came over HTTPS or `PUBLIC_URL` starts with `https://`. Changing the password signs out all other sessions.
 - After 5 failed logins from one IP, that IP is locked out for 5 minutes. Logins, failed logins, logouts, and password changes go into the event log on the Admin page.
-- **Forgot the password?** Run `docker compose exec app python -m app.auth reset-admin`. It prints a new temporary password, which must again be changed at login.
+- **Forgot the password?** Run `docker compose exec -u app app python -m app.auth reset-admin` (as the `app` user, so the files it writes in `/data` stay readable by the server). It prints a new temporary password, which must again be changed at login.
 - `/v1` and `/mcp` don't use the login. They use API keys, which you create on the Admin page.
+- **Key scopes.** A key is `read` (the default) or `write`. Read keys can search, ask, list and fetch. Uploading, importing, deleting, re-indexing and cancelling documents need a write key. Tick **allow uploads (write)** when creating a key under Admin → API keys, or send `{"name": "...", "scope": "write"}` to `POST /api/admin/keys`. Keys made on the Connect page are always read keys. Give write keys only to the apps that upload.
+- **URL imports** refuse private, loopback and LAN addresses by default, so the server can't be used to reach internal services. Set `ALLOW_PRIVATE_URLS=1` to allow them, for example to import from a file server on your network.
+- The container runs as the unprivileged user `app`. See [Upgrading](#upgrading-an-existing-install) for volumes created by older versions.
 
 ## Running on a server
 
@@ -114,7 +127,7 @@ curl -s http://localhost:8080/v1/retrieve -H "Authorization: Bearer $RAG_KEY" \
   -H "Content-Type: application/json" -d '{"query": "termination clause", "top_k": 8}'
 ```
 
-**Upload PDFs** and **list documents**:
+**Upload PDFs** (needs a **write** key; read keys get 403) and **list documents**:
 
 ```bash
 curl -s http://localhost:8080/v1/documents -H "Authorization: Bearer $RAG_KEY" -F files=@report.pdf -F files=@manual.pdf
@@ -208,6 +221,16 @@ curl https://api.openai.com/v1/responses \
 
 From any other app or agent framework, you can call the plain HTTP API above (`/v1/retrieve` and `/v1/query`) directly.
 
+### Changing the PostgreSQL password
+
+The bundled database is only reachable inside the compose network, but change its default password anyway for anything beyond local use. Set `POSTGRES_PASSWORD` before the **first** `docker compose up` (for example in `.env`), then use the same password in the connection string on the Setup page (`postgresql://rag:<password>@postgres:5432/rag`). The variable only takes effect when the `pg-data` volume is created. On an existing install, also run `docker compose exec postgres psql -U rag -c "ALTER USER rag PASSWORD '<password>'"`, then update the DSN in Setup.
+
+### Upgrading an existing install
+
+The container no longer runs as root. Its entrypoint starts as root only to `chown` the `/data` volume to the `app` user when it isn't already owned by it, then drops privileges, so volumes created by older versions are fixed automatically on the first start. If your platform forbids starting as root, run once `docker compose run --rm -u root --entrypoint chown app -R app:app /data` and set `user: app` in the compose file.
+
+Image tags are pinned (`pgvector/pgvector:0.8.0-pg16`, `ollama/ollama:0.5.7`). Bump them deliberately; a pgvector major PostgreSQL change needs a dump and restore.
+
 ## Admin & diagnostics
 
 The **Admin** page shows:
@@ -217,7 +240,7 @@ The **Admin** page shows:
 - Query stats for the last 24 hours: count, average latency, and errors. A log of recent queries splits each one into retrieval and generation time.
 - A **retrieval debugger** that runs a query against the vector store and shows the chunks and scores, without calling the LLM.
 - An event log of ingestion results, errors, and config changes.
-- API keys: create them, revoke them, and see when each was last used.
+- API keys: create them (read or write), revoke them, and see each key's scope and when it was last used.
 - **Re-index all**, for after you change the chunking or the embedding model.
 
 ## Configuration
@@ -228,7 +251,10 @@ The **Admin** page shows:
 | `ADMIN_USER` | `admin` | Username of the first-run admin account |
 | `ADMIN_PASSWORD` | empty | Temporary first-run password (random and printed to the logs when empty). Must be changed at first login |
 | `PUBLIC_URL` | empty | Public HTTPS base URL, used as the server in `/v1/openapi.json` |
-| `MAX_UPLOAD_MB` | `100` | Max size per PDF |
+| `MAX_UPLOAD_MB` | `100` | Max size per PDF (uploads and URL imports) |
+| `MAX_REQUEST_MB` | `1024` | Max body of one upload request, all files together. Larger requests get 413. Keep it at least `MAX_UPLOAD_MB`, or single large PDFs are refused |
+| `ALLOW_PRIVATE_URLS` | empty | Set to `1` to let URL import fetch private, loopback and LAN addresses (blocked by default) |
+| `POSTGRES_PASSWORD` | `rag` | Password of the bundled PostgreSQL. Change it, see below |
 | `IMPORT_DIR` | `/import` | Folder scanned by "Import from server folder" |
 | `DATA_DIR` | `/data` | Config, uploads, metadata DB, embedded Chroma |
 

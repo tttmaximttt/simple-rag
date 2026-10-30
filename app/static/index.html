@@ -160,6 +160,7 @@
     <button type="button" id="import-folder">Import from server folder</button>
     <span class="result" id="import-result"></span>
   </details>
+  <p id="doc-status" class="bad small"></p>
   <table>
     <thead><tr><th>File</th><th>Status</th><th>Pages</th><th>Chunks</th><th>Size</th><th>Added</th><th></th></tr></thead>
     <tbody id="doc-rows"></tbody>
@@ -195,6 +196,7 @@
     <input id="connect-key-name" placeholder="Key name, e.g. claude-desktop">
     <button>Create key</button>
   </form>
+  <p class="muted small">These keys are read-only: they can search and read documents, not upload or delete. Create a write key under <a href="#admin">Admin</a> for uploads.</p>
   <p id="connect-key" class="small"></p>
 
   <h2>3. Pick your client</h2>
@@ -224,16 +226,17 @@
   <p class="muted small">Keys authenticate the HTTP API and the MCP server. See <a href="#connect">Connect</a> for the URLs and ready-to-paste setups.</p>
   <form id="key-form" class="row">
     <input id="key-name" placeholder="Key name, e.g. my-app">
+    <label class="check"><input type="checkbox" id="key-write"> allow uploads (write)</label>
     <button>Create key</button>
   </form>
   <p id="new-key" class="small"></p>
-  <table><thead><tr><th>Name</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+  <table><thead><tr><th>Name</th><th>Key</th><th>Scope</th><th>Created</th><th>Last used</th><th></th></tr></thead>
     <tbody id="key-rows"></tbody></table>
 
   <h2>Retrieval debugger</h2>
   <form id="debug-form" class="row">
     <input id="debug-q" placeholder="Query to test retrieval">
-    <input id="debug-k" type="number" value="5" min="1" max="50" style="max-width:5em">
+    <input id="debug-k" type="number" value="5" min="1" max="50" class="narrow">
     <button>Search</button>
   </form>
   <div id="debug-hits"></div>

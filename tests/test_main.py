@@ -1,8 +1,8 @@
 import httpx
 import pytest
 
-from app import auth, main
-from app.providers import embeddings, llm
+from app import auth, main, providers
+from app.providers import llm
 from conftest import PASSWORD
 
 
@@ -98,7 +98,7 @@ def test_models_lists_chat_models_for_the_draft_settings(logged_in, monkeypatch)
 
 
 def test_models_lists_embedding_models(logged_in, monkeypatch):
-    monkeypatch.setattr(embeddings.httpx, "get", _fake_get(200, {"data": [
+    monkeypatch.setattr(providers.httpx, "get", _fake_get(200, {"data": [
         {"id": "gpt-4o"}, {"id": "text-embedding-3-large"}, {"id": "text-embedding-3-small"}]}))
     body = {"embeddings": {"provider": "openai", "openai": {"base_url": "http://emb.test/v1"}}}
     r = logged_in.post("/api/models/embeddings", json=body).json()

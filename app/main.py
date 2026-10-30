@@ -5,32 +5,53 @@ import platform
 import re
 import secrets
 import shutil
+import socket
+import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
-from fastapi import FastAPI, HTTPException, Request, UploadFile
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import auth, config, db, rag, stores, tokenizer
+from .mcp_server import MAX_QUERY_CHARS, mcp
 from .mcp_server import http_app as mcp_http_app
-from .mcp_server import mcp
 from .providers import embeddings, llm
 
 STARTED = time.time()
 # Public base URL (e.g. https://rag.example.com), used in the OpenAPI spec for GPT Actions.
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "100"))
+MAX_FILES_PER_UPLOAD = 100
+# Cap on one upload request's whole body, counted as it arrives (a chunked request declares no Content-Length).
+MAX_REQUEST_MB = int(os.environ.get("MAX_REQUEST_MB", "1024"))
+UPLOAD_PATHS = ("/api/documents", "/v1/documents")
 IMPORT_DIR = Path(os.environ.get("IMPORT_DIR", "/import"))
+# URL imports refuse hosts that resolve to loopback, private, link-local and other non-public addresses, so an API
+# key can't reach the Docker network or a cloud metadata endpoint. ALLOW_PRIVATE_URLS=1 lifts that for LAN setups.
+ALLOW_PRIVATE_URLS = os.environ.get("ALLOW_PRIVATE_URLS") == "1"
+# DOWNLOAD_TIMEOUT_S bounds a whole URL download: every redirect hop, connecting, headers and body.
+MAX_URLS, MAX_REDIRECTS, DOWNLOAD_TIMEOUT_S = 100, 5, 120
 CHECK_TIMEOUT_S = 15
-_pool = ThreadPoolExecutor(max_workers=4)
+# Separate pools, so a big URL import can't starve the status checks.
+_download_pool = ThreadPoolExecutor(max_workers=4)
+_check_pool = ThreadPoolExecutor(max_workers=4)
+_register_lock = threading.Lock()
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer", "X-Frame-Options": "DENY",
+    # No inline scripts, event handlers, style= attributes or <style> blocks in the UI: they would be blocked.
+    "Content-Security-Policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+}
 
 @asynccontextmanager
 async def lifespan(_app):
@@ -53,6 +74,49 @@ def _same_origin(request: Request, origin: str) -> bool:
     return urlsplit(origin).netloc.lower() in {h.lower() for h in allowed if h}
 
 
+class _BodyTooLarge(Exception):
+    pass
+
+
+class LimitUploadBody:
+    """Counts an upload's body bytes as they arrive and answers 413 once MAX_REQUEST_MB is passed, whatever the
+    headers say, instead of letting Starlette spool the whole body to disk first."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] != "POST" or scope["path"] not in UPLOAD_PATHS:
+            return await self.app(scope, receive, send)
+        received, started = 0, False
+
+        async def counting_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > MAX_REQUEST_MB << 20:
+                    raise _BodyTooLarge
+            return message
+
+        async def tracking_send(message):
+            nonlocal started
+            started = started or message["type"] == "http.response.start"
+            await send(message)
+
+        try:
+            await self.app(scope, counting_receive, tracking_send)
+        except _BodyTooLarge:
+            if started:
+                raise
+            await _request_too_large()(scope, receive, send)
+
+
+# Added before the http middlewares below, so it runs inside them: authenticate refuses the request before any
+# body is read, and the 413 still gets the security headers.
+app.add_middleware(LimitUploadBody)
+
+
 @app.middleware("http")
 async def authenticate(request: Request, call_next):
     path = request.url.path
@@ -64,11 +128,14 @@ async def authenticate(request: Request, call_next):
         key = (header[7:] if header.startswith("Bearer ") else request.headers.get("x-api-key", "")
                # For clients that only accept a URL (e.g. claude.ai custom connectors).
                or request.query_params.get("key", ""))
-        found = key and db.rows("SELECT id FROM api_keys WHERE hash=?", (auth.secret_hash(key),))
+        found = key and db.rows("SELECT id, scope FROM api_keys WHERE hash=?", (auth.secret_hash(key),))
         if not found:
             return JSONResponse({"error": "Missing or invalid API key"}, status_code=401)
         db.execute("UPDATE api_keys SET last_used=? WHERE id=?", (time.time(), found[0]["id"]))
-        return await call_next(request)
+        request.state.api_scope = found[0]["scope"]
+        if request.method == "POST" and path in WRITE_API_PATHS and request.state.api_scope != "write":
+            return JSONResponse({"error": "This API key is read-only"}, status_code=403)
+        return _upload_too_large(request, path) or await call_next(request)
     # Internal API used by the web UI: requires an admin session.
     if path.startswith("/api/") and path not in PUBLIC_API_PATHS:
         user = auth.session_user(request.cookies.get(auth.SESSION_COOKIE))
@@ -81,11 +148,38 @@ async def authenticate(request: Request, call_next):
         if request.method not in ("GET", "HEAD") and origin and not _same_origin(request, origin):
             return JSONResponse({"error": "Cross-origin request blocked"}, status_code=403)
         request.state.user = user
+        if too_large := _upload_too_large(request, path):
+            return too_large
     # Static UI files are public; the page shows a login form when the API answers 401.
     return await call_next(request)
 
 
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    # Added after authenticate, so it wraps it and also covers its early 401/403 answers.
+    response = await call_next(request)
+    response.headers.update(SECURITY_HEADERS)
+    return response
+
+
+def _request_too_large() -> JSONResponse:
+    return JSONResponse({"error": f"Upload too large: at most {MAX_REQUEST_MB} MB per request"}, status_code=413)
+
+
+def _upload_too_large(request: Request, path: str) -> JSONResponse | None:
+    """Refuse an upload whose declared size can't fit before its body is read (per-file sizes are checked later)."""
+    if request.method != "POST" or path not in UPLOAD_PATHS:
+        return None
+    try:
+        length = int(request.headers.get("content-length", 0))
+    except ValueError:
+        return JSONResponse({"error": "Invalid Content-Length"}, status_code=400)
+    return _request_too_large() if length > MAX_REQUEST_MB << 20 else None
+
+
 PUBLIC_API_PATHS = {"/api/health", "/api/auth/status", "/api/auth/login"}
+# Need an API key with the "write" scope; any key can use the other /v1 routes and /mcp.
+WRITE_API_PATHS = {"/v1/documents", "/v1/documents/urls"}
 
 
 # ---------- auth ----------
@@ -293,26 +387,30 @@ def list_documents():
     return docs
 
 
-class TooLarge(Exception):
-    pass
+class Skip(Exception):
+    """A URL that isn't imported; the message is the reason shown to the caller, so it must not leak details."""
 
 
-def _register(filename: str, tmp: Path, size: int) -> dict:
-    """Move a downloaded/uploaded temp file into storage and queue it, skipping duplicates."""
-    data = tmp.read_bytes()
-    digest = hashlib.sha256(data).hexdigest()
-    dup = db.rows("SELECT id, filename FROM documents WHERE sha256=?", (digest,))
-    if dup:
-        tmp.unlink(missing_ok=True)
-        return {"file": filename, "status": "skipped", "reason": f"duplicate of {dup[0]['filename']}"}
-    if data[:5] != b"%PDF-":
-        tmp.unlink(missing_ok=True)
-        return {"file": filename, "status": "skipped", "reason": "not a PDF"}
-    doc_id = uuid.uuid4().hex
-    tmp.replace(config.UPLOAD_DIR / f"{doc_id}.pdf")
-    now = time.time()
-    db.execute("INSERT INTO documents (id, filename, size, status, created, updated, sha256) VALUES (?,?,?,?,?,?,?)",
-               (doc_id, filename, size, "queued", now, now, digest))
+def _register(filename: str, tmp: Path, size: int, digest: str | None = None) -> dict:
+    """Move a downloaded/uploaded temp file into storage and queue it, skipping duplicates. Pass the sha256 if
+    it was computed while writing the file."""
+    if digest is None:
+        with tmp.open("rb") as f:
+            digest = hashlib.file_digest(f, "sha256").hexdigest()
+    with tmp.open("rb") as f:
+        is_pdf = f.read(5) == b"%PDF-"
+    # Check and insert together: parallel URL downloads and uploads of the same file must queue it once.
+    with _register_lock:
+        dup = db.rows("SELECT id, filename FROM documents WHERE sha256=?", (digest,))
+        if dup or not is_pdf:
+            tmp.unlink(missing_ok=True)
+            return {"file": filename, "status": "skipped",
+                    "reason": f"duplicate of {dup[0]['filename']}" if dup else "not a PDF"}
+        doc_id = uuid.uuid4().hex
+        tmp.replace(config.UPLOAD_DIR / f"{doc_id}.pdf")
+        now = time.time()
+        db.execute("INSERT INTO documents (id, filename, size, status, created, updated, sha256) "
+                   "VALUES (?,?,?,?,?,?,?)", (doc_id, filename, size, "queued", now, now, digest))
     rag.enqueue(doc_id)
     return {"file": filename, "status": "queued", "id": doc_id}
 
@@ -328,29 +426,41 @@ def _clean_name(name: str) -> str:
     return "/".join(parts)[-255:] or "upload.pdf"
 
 
+def _save_upload(name: str, src) -> dict:
+    """Copy one parsed upload into storage, hashing as it goes. Blocking: run it off the event loop."""
+    tmp = config.UPLOAD_DIR / f".tmp-{uuid.uuid4().hex}"
+    size, sha = 0, hashlib.sha256()
+    with tmp.open("wb") as out:
+        while chunk := src.read(1 << 20):
+            size += len(chunk)
+            if size > MAX_UPLOAD_MB << 20:
+                break
+            sha.update(chunk)
+            out.write(chunk)
+    if size > MAX_UPLOAD_MB << 20:
+        tmp.unlink(missing_ok=True)
+        return {"file": name, "status": "skipped", "reason": f"larger than {MAX_UPLOAD_MB} MB"}
+    return _register(name, tmp, size, sha.hexdigest())
+
+
 @app.post("/api/documents")
-async def upload(files: list[UploadFile]):
-    """Upload one or many PDFs. Non-PDFs, oversized files, and duplicates are skipped and reported."""
+async def upload(request: Request):
+    """Upload one or many PDFs (multipart "files" fields). Non-PDFs, oversized files, and duplicates are skipped
+    and reported."""
     _require_setup()
     results = []
-    for f in files:
-        name = _clean_name(f.filename)
-        if not name.lower().endswith(".pdf"):
-            results.append({"file": name, "status": "skipped", "reason": "not a .pdf file"})
-            continue
-        tmp = config.UPLOAD_DIR / f".tmp-{uuid.uuid4().hex}"
-        size = 0
-        with tmp.open("wb") as out:
-            while chunk := await f.read(1 << 20):
-                size += len(chunk)
-                if size > MAX_UPLOAD_MB << 20:
-                    break
-                out.write(chunk)
-        if size > MAX_UPLOAD_MB << 20:
-            tmp.unlink(missing_ok=True)
-            results.append({"file": name, "status": "skipped", "reason": f"larger than {MAX_UPLOAD_MB} MB"})
-            continue
-        results.append(_register(name, tmp, size))
+    # Parsed here rather than by FastAPI so the file count is capped while parsing (400 past it), before more parts
+    # are spooled.
+    async with request.form(max_files=MAX_FILES_PER_UPLOAD, max_fields=10) as form:
+        for f in form.getlist("files"):
+            if isinstance(f, str):
+                continue
+            name = _clean_name(f.filename)
+            if not name.lower().endswith(".pdf"):
+                results.append({"file": name, "status": "skipped", "reason": "not a .pdf file"})
+                continue
+            # The body is already parsed into f.file, so copy it synchronously in a worker thread.
+            results.append(await run_in_threadpool(_save_upload, name, f.file))
     return {"results": results, "queued": sum(r["status"] == "queued" for r in results)}
 
 
@@ -358,29 +468,109 @@ class UrlList(BaseModel):
     urls: list[str]
 
 
+def _blocked(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    ip = getattr(ip, "ipv4_mapped", None) or ip  # ::ffff:127.0.0.1 is loopback too
+    return (ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved or ip.is_multicast
+            or ip.is_unspecified or not ip.is_global)
+
+
+def _resolve(host: str) -> str:
+    """The address to connect to for host, or Skip if any of its addresses is non-public (unless allowed)."""
+    try:
+        addrs = [info[4][0].split("%")[0] for info in socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)]
+    except (OSError, UnicodeError):
+        addrs = []
+    # One reason for both, so a caller can't tell an internal host name that resolves from one that doesn't.
+    if not addrs:
+        db.log("warn", "import", f"download refused: {host[:255]} does not resolve")
+        raise Skip("download failed")
+    if not ALLOW_PRIVATE_URLS and any(_blocked(ipaddress.ip_address(a)) for a in addrs):
+        db.log("warn", "import", f"download refused: {host[:255]} resolves to a non-public address")
+        raise Skip("download failed")
+    return addrs[0]
+
+
+def _fetch(url: httpx.URL, tmp: Path) -> tuple[int, str]:
+    """Download url into tmp, following redirects by hand so every hop is checked. Returns (size, sha256)."""
+    deadline = time.monotonic() + DOWNLOAD_TIMEOUT_S
+    sockets, expired = [], threading.Event()
+
+    def on_connect(event, info):
+        if event.endswith("connect_tcp.complete"):
+            sockets.append(info["return_value"].get_extra_info("socket"))
+            if expired.is_set():  # connected just as the deadline passed
+                expire()
+
+    def expire():
+        # Read timeouts are per read, so a server dripping bytes would never trip them: cut the socket instead.
+        expired.set()
+        for sock in sockets:
+            try:
+                sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+
+    timer = threading.Timer(DOWNLOAD_TIMEOUT_S, expire)
+    timer.daemon = True
+    timer.start()
+    try:
+        with httpx.Client(timeout=30, follow_redirects=False) as client:
+            for _ in range(MAX_REDIRECTS + 1):
+                if url.scheme not in ("http", "https"):
+                    raise Skip("only http(s) URLs are supported")
+                # Connect to the address that was checked (no second lookup a DNS rebind could change), still
+                # sending the real host name for virtual hosting and TLS certificate checks.
+                target = url.copy_with(host=_resolve(url.host))
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise Skip("took too long")
+                with client.stream("GET", target, headers={"Host": url.netloc.decode("ascii")},
+                                   timeout=min(30, remaining),
+                                   extensions={"sni_hostname": url.host, "trace": on_connect}) as r:
+                    if r.is_redirect:
+                        url = url.join(r.headers["location"])
+                        continue
+                    if not r.is_success:
+                        raise Skip(f"HTTP {r.status_code}")
+                    size, sha = 0, hashlib.sha256()
+                    with tmp.open("wb") as out:
+                        for chunk in r.iter_bytes():
+                            size += len(chunk)
+                            if size > MAX_UPLOAD_MB << 20:
+                                raise Skip(f"larger than {MAX_UPLOAD_MB} MB")
+                            if expired.is_set():
+                                raise Skip("took too long")
+                            sha.update(chunk)
+                            out.write(chunk)
+                    return size, sha.hexdigest()
+        raise Skip("too many redirects")
+    except httpx.HTTPError:
+        if expired.is_set():
+            raise Skip("took too long")
+        raise
+    finally:
+        timer.cancel()
+
+
 def _download(url: str) -> dict:
-    name = _clean_name(Path(httpx.URL(url).path).name or "download.pdf")
-    if not name.lower().endswith(".pdf"):
-        name += ".pdf"
+    name = "download.pdf"
     tmp = config.UPLOAD_DIR / f".tmp-{uuid.uuid4().hex}"
     try:
-        if not url.lower().startswith(("http://", "https://")):
-            raise ValueError("only http(s) URLs are supported")
-        size = 0
-        with httpx.stream("GET", url, follow_redirects=True, timeout=60) as r, tmp.open("wb") as out:
-            r.raise_for_status()
-            for chunk in r.iter_bytes(1 << 20):
-                size += len(chunk)
-                if size > MAX_UPLOAD_MB << 20:
-                    raise TooLarge()
-                out.write(chunk)
-        res = _register(name, tmp, size)
-    except TooLarge:
-        res = {"file": name, "status": "skipped", "reason": f"larger than {MAX_UPLOAD_MB} MB"}
-    except httpx.HTTPStatusError as e:
-        res = {"file": name, "status": "skipped", "reason": f"download failed: HTTP {e.response.status_code}"}
+        try:
+            parsed = httpx.URL(url)
+        except httpx.InvalidURL:
+            raise Skip("invalid URL")
+        name = _clean_name(Path(parsed.path).name or name)
+        if not name.lower().endswith(".pdf"):
+            name += ".pdf"
+        size, digest = _fetch(parsed, tmp)
+        res = _register(name, tmp, size, digest)
+    except Skip as e:
+        res = {"file": name, "status": "skipped", "reason": str(e)}
     except Exception as e:
-        res = {"file": name, "status": "skipped", "reason": f"download failed: {e}"}
+        # Details stay in the event log: they would tell an API caller which hosts and ports answer.
+        db.log("warn", "import", f"download of {url[:500]} failed: {type(e).__name__}: {e}")
+        res = {"file": name, "status": "skipped", "reason": "download failed"}
     tmp.unlink(missing_ok=True)
     res["url"] = url
     return res
@@ -391,7 +581,9 @@ def import_urls(body: UrlList):
     """Download and ingest a list of PDF URLs."""
     _require_setup()
     urls = [u.strip() for u in body.urls if u.strip()]
-    results = list(_pool.map(_download, urls))
+    if len(urls) > MAX_URLS:
+        raise HTTPException(400, f"At most {MAX_URLS} URLs per import")
+    results = list(_download_pool.map(_download, urls))
     queued = sum(r["status"] == "queued" for r in results)
     db.log("info", "import", f"URL import: {queued}/{len(urls)} queued")
     return {"results": results, "queued": queued}
@@ -447,12 +639,14 @@ def reindex_all():
 
 @app.delete("/api/documents/{doc_id}")
 def delete_document(doc_id: str):
+    # Row first, like cancel(): a running ingest then sees it gone instead of finishing as "ready" after the
+    # vectors were dropped.
+    db.execute("DELETE FROM documents WHERE id=?", (doc_id,))
     try:
         stores.get(config.load()).delete_doc(doc_id)
     except Exception as e:
         db.log("warn", "delete", f"could not remove vectors for {doc_id}: {e}")
     (config.UPLOAD_DIR / f"{doc_id}.pdf").unlink(missing_ok=True)
-    db.execute("DELETE FROM documents WHERE id=?", (doc_id,))
     return {"ok": True}
 
 
@@ -465,14 +659,14 @@ def connect_info():
 # ---------- chat ----------
 
 class Question(BaseModel):
-    question: str
+    question: str = Field(max_length=MAX_QUERY_CHARS)
     k: int | None = Field(None, ge=1, le=rag.MAX_TOP_K)
 
 
 @app.post("/api/chat")
 def chat(q: Question):
     try:
-        return rag.answer(q.question)
+        return rag.answer(q.question, q.k)
     except Exception as e:
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
 
@@ -495,7 +689,7 @@ def status():
     cfg = config.load()
     # Run checks concurrently with a cap so one slow component can't stall the page.
     names = ("vector_store", "embeddings")
-    futures = {c: _pool.submit(_check, c, cfg) for c in names}
+    futures = {c: _check_pool.submit(_check, c, cfg) for c in names}
     checks = {}
     for c, f in futures.items():
         try:
@@ -533,19 +727,20 @@ def status():
 
 @app.get("/api/admin/keys")
 def list_keys():
-    return db.rows("SELECT id, name, prefix, created, last_used FROM api_keys ORDER BY id DESC")
+    return db.rows("SELECT id, name, prefix, scope, created, last_used FROM api_keys ORDER BY id DESC")
 
 
 class KeyName(BaseModel):
     name: str = "default"
+    scope: Literal["read", "write"] = "read"  # "write" may also upload and import documents
 
 
 @app.post("/api/admin/keys")
 def create_key(body: KeyName):
     key = "rag_" + secrets.token_urlsafe(32)
-    db.execute("INSERT INTO api_keys (name, prefix, hash, created) VALUES (?,?,?,?)",
-               (body.name, key[:10], auth.secret_hash(key), time.time()))
-    db.log("info", "api", f"API key created: {body.name}")
+    db.execute("INSERT INTO api_keys (name, prefix, hash, created, scope) VALUES (?,?,?,?,?)",
+               (body.name, key[:10], auth.secret_hash(key), time.time(), body.scope))
+    db.log("info", "api", f"API key created: {body.name} ({body.scope})")
     return {"key": key}  # shown once; only the hash is stored
 
 
@@ -576,12 +771,12 @@ def queries(limit: int = 100):
 # ---------- public API (/v1, API-key auth) ----------
 
 class QueryIn(BaseModel):
-    question: str
+    question: str = Field(max_length=MAX_QUERY_CHARS)
     top_k: int | None = Field(None, ge=1, le=rag.MAX_TOP_K)
 
 
 class RetrieveIn(BaseModel):
-    query: str
+    query: str = Field(max_length=MAX_QUERY_CHARS)
     top_k: int | None = Field(None, ge=1, le=rag.MAX_TOP_K)
     rewrite: bool | None = Field(None, description="Also search with the query reworded and translated into the "
                                  "documents' languages by the server's LLM. Defaults to the server's setting.")
@@ -593,7 +788,9 @@ def v1_query(q: QueryIn):
     try:
         return rag.answer(q.question, q.top_k)
     except Exception as e:
-        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
+        # API callers get no internals (hosts, provider errors); the admin sees them in the Admin event log.
+        db.log("error", "api", f"query failed: {type(e).__name__}: {e}")
+        return JSONResponse({"error": "Answer failed"}, status_code=502)
 
 
 @app.post("/v1/retrieve", operation_id="searchDocuments")
@@ -603,7 +800,8 @@ def v1_retrieve(q: RetrieveIn):
         _, queries, hits = rag.search(q.query, q.top_k, q.rewrite)
         return {"results": hits, "queries": queries}
     except Exception as e:
-        return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
+        db.log("error", "api", f"retrieve failed: {type(e).__name__}: {e}")
+        return JSONResponse({"error": "Search failed"}, status_code=502)
 
 
 @app.get("/v1/documents", operation_id="listDocuments")
@@ -612,8 +810,8 @@ def v1_documents():
 
 
 @app.post("/v1/documents", operation_id="uploadDocuments", include_in_schema=False)
-async def v1_upload(files: list[UploadFile]):
-    return await upload(files)
+async def v1_upload(request: Request):
+    return await upload(request)
 
 
 @app.post("/v1/documents/urls", operation_id="importDocumentUrls", include_in_schema=False)

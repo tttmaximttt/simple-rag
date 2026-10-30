@@ -9,6 +9,7 @@ from .config import DATA_DIR
 _DB = DATA_DIR / "meta.sqlite"
 _lock = threading.Lock()
 KEEP_EVENTS = 2000  # per partition: auth events, and all others
+KEEP_QUERIES = 5000
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -59,6 +60,14 @@ def init():
             c.execute("ALTER TABLE documents ADD COLUMN language TEXT")
         # Lets log() trim each partition with an index seek instead of scanning the table.
         c.execute("CREATE INDEX IF NOT EXISTS events_part ON events ((source IS 'auth'), id)")
+        if "scope" not in {r["name"] for r in c.execute("PRAGMA table_info(api_keys)")}:
+            # "read" (search and ask) or "write" (also upload and import). Keys from before scopes stay read-only.
+            c.execute("ALTER TABLE api_keys ADD COLUMN scope TEXT NOT NULL DEFAULT 'read'")
+        c.execute("CREATE INDEX IF NOT EXISTS queries_ts ON queries (ts)")
+        # Keep the newest KEEP_QUERIES rows (ids only grow); recreated so a changed limit takes effect.
+        c.execute("DROP TRIGGER IF EXISTS queries_cap")
+        c.execute(f"CREATE TRIGGER queries_cap AFTER INSERT ON queries BEGIN "
+                  f"DELETE FROM queries WHERE id <= NEW.id - {int(KEEP_QUERIES)}; END")
 
 
 def rows(sql, args=()):

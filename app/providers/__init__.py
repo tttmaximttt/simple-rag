@@ -2,7 +2,7 @@ import time
 
 import httpx
 
-RETRY_STATUSES = {429, 500, 502, 503, 504}
+RETRY_STATUSES = {429, 500, 502, 503, 504, 529}  # 529: Anthropic overloaded
 
 
 def check(r: httpx.Response) -> httpx.Response:
