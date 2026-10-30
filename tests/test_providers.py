@@ -64,3 +64,17 @@ def test_post_with_retry_gives_up(monkeypatch):
     monkeypatch.setattr(providers.httpx, "post", lambda url, **kw: httpx.Response(429, request=REQ))
     monkeypatch.setattr(providers.time, "sleep", lambda s: None)
     assert providers.post_with_retry("https://x/embeddings", attempts=3).status_code == 429
+
+
+@pytest.mark.parametrize("module, cls, args", [
+    ("embeddings", "OllamaEmbeddings", ("http://ollama:11434/", "nomic-embed-text")),
+    ("llm", "OllamaLLM", ("http://ollama:11434/", "llama3.1", 0.2)),
+])
+def test_ollama_models_come_from_tags(monkeypatch, module, cls, args):
+    from app import providers as p
+    seen = []
+    monkeypatch.setattr(p.httpx, "get", lambda url, **kw: seen.append(url) or httpx.Response(
+        200, json={"models": [{"name": "llama3.1"}, {"name": "nomic-embed-text"}]}, request=httpx.Request("GET", url)))
+    provider = getattr(__import__(f"app.providers.{module}", fromlist=[cls]), cls)(*args)
+    assert provider.models() == ["llama3.1", "nomic-embed-text"]
+    assert seen == ["http://ollama:11434/api/tags"]

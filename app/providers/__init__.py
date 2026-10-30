@@ -24,6 +24,16 @@ def check(r: httpx.Response) -> httpx.Response:
     return r
 
 
+def openai_model_ids(base_url: str, headers: dict) -> list[str]:
+    r = check(httpx.get(f"{base_url}/models", headers=headers, timeout=30))
+    return [m["id"] for m in r.json()["data"]]
+
+
+def ollama_models(url: str) -> list[str]:
+    r = check(httpx.get(f"{url}/api/tags", timeout=30))
+    return [m["name"] for m in r.json()["models"]]
+
+
 def post_with_retry(url, attempts=5, **kwargs) -> httpx.Response:
     """httpx.post that waits out rate limits and transient server errors, honouring Retry-After."""
     for attempt in range(attempts):
@@ -35,4 +45,3 @@ def post_with_retry(url, attempts=5, **kwargs) -> httpx.Response:
         except ValueError:
             wait = 2 ** attempt
         time.sleep(wait)
-    return r

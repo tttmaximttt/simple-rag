@@ -96,6 +96,16 @@ def test_new_embedding_model_into_new_collection(logged_in, saved):
     assert r.status_code == 200 and len(saved) == 1
 
 
+@pytest.mark.parametrize("collection, old, new, expected", [
+    ("docs_x", "x", "x", "docs_x_2"),  # the same model name from another provider
+    ("a" * 70, "x", "m", "a" * 63),
+    ("a" * 61, "x", "m", "a" * 61 + "_m"),
+])
+def test_suggested_collection_never_repeats_the_current_name(collection, old, new, expected):
+    name = main._collection_for(collection, old, new)
+    assert name == expected and len(name) <= 63 and not name.endswith("_")
+
+
 def test_suggested_collection_replaces_its_own_suffix():
     assert main._collection_for("docs", "a", "BAAI/bge-small-en-v1.5") == "docs_baai_bge_small_en_v1_5"
     assert main._collection_for("docs_baai_bge_small_en_v1_5", "BAAI/bge-small-en-v1.5", "text-embedding-3-small") \

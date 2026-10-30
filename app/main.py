@@ -11,7 +11,6 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import urlsplit
-from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request, UploadFile
@@ -199,12 +198,10 @@ def _slug(s: str) -> str:
 
 def _collection_for(collection: str, old_model: str, new_model: str) -> str:
     """A new collection name for vectors from new_model, replacing a suffix this function added for old_model."""
-    base = collection.removesuffix("_" + _slug(old_model)) or collection
-    name = f"{base}_{_slug(new_model)}"[:63].strip("_")
-    n = 2
+    stem = f"{collection.removesuffix('_' + _slug(old_model)) or collection}_{_slug(new_model)}"
+    name, n = stem[:63].strip("_"), 2
     while name == collection:  # e.g. the same model name from another provider
-        name = f"{base}_{_slug(new_model)}"[:60].strip("_") + f"_{n}"
-        n += 1
+        name, n = f"{stem[:60].strip('_')}_{n}", n + 1
     return name
 
 

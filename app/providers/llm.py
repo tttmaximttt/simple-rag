@@ -1,7 +1,7 @@
 """Chat model providers. Each exposes complete(system, user) -> str."""
 import httpx
 
-from . import check
+from . import check, ollama_models, openai_model_ids
 
 
 class AnthropicLLM:
@@ -17,9 +17,8 @@ class AnthropicLLM:
         return "".join(b.get("text", "") for b in r.json()["content"])
 
     def models(self):
-        r = httpx.get("https://api.anthropic.com/v1/models", params={"limit": 1000}, timeout=30, headers={
-            "x-api-key": self.api_key, "anthropic-version": "2023-06-01"})
-        check(r)
+        r = check(httpx.get("https://api.anthropic.com/v1/models", params={"limit": 1000}, timeout=30, headers={
+            "x-api-key": self.api_key, "anthropic-version": "2023-06-01"}))
         return [m["id"] for m in r.json()["data"]]
 
 
@@ -44,11 +43,9 @@ class OpenAILLM:
         return httpx.post(f"{self.base_url}/chat/completions", headers=self.headers, timeout=180, json=body)
 
     def models(self):
-        r = httpx.get(f"{self.base_url}/models", headers=self.headers, timeout=30)
-        check(r)
         # OpenAI's list includes models that /chat/completions can't serve: embedding, audio, image, video,
         # moderation, legacy completions, and the Responses-API-only pro and codex models.
-        return [m["id"] for m in r.json()["data"] if not any(x in m["id"] for x in _NOT_CHAT)]
+        return [i for i in openai_model_ids(self.base_url, self.headers) if not any(x in i for x in _NOT_CHAT)]
 
 
 _DEFAULT_TEMPERATURE_ONLY: set[tuple[str, str]] = set()  # (base_url, model) seen rejecting a temperature
@@ -68,9 +65,7 @@ class OllamaLLM:
         return r.json()["message"]["content"]
 
     def models(self):
-        r = httpx.get(f"{self.url}/api/tags", timeout=30)
-        check(r)
-        return [m["name"] for m in r.json()["models"]]
+        return ollama_models(self.url)
 
 
 def get(cfg):

@@ -110,11 +110,11 @@ def _embed(doc_id, filename, pieces, emb, store):
             _report(doc_id, "embedding", done, len(pieces))
 
 
-def _drop_vectors(cfg, doc_id, filename):
+def _drop_vectors(cfg, doc_id, name):
     try:
         stores.get(cfg).delete_doc(doc_id)
     except Exception as e:  # noqa: BLE001
-        db.log("warn", "ingest", f"{filename}: could not remove vectors: {e}")
+        db.log("warn", "ingest", f"{name}: could not remove vectors: {e}")
 
 
 def ingest(doc_id):
@@ -168,7 +168,8 @@ def cancel(doc_id) -> bool:
     if not db.execute("UPDATE documents SET status='cancelled', chunks=NULL, updated=? WHERE id=? "
                       "AND status IN ('queued','processing')", (time.time(), doc_id)):
         return False
-    _drop_vectors(config.load(), doc_id, doc_id)
+    rows = db.rows("SELECT filename FROM documents WHERE id=?", (doc_id,))
+    _drop_vectors(config.load(), doc_id, rows[0]["filename"] if rows else doc_id)
     return True
 
 
