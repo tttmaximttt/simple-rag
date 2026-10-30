@@ -23,6 +23,10 @@ After that first login you must choose your own password (10 or more characters)
 3. **LLM.** Choose Anthropic Claude, any OpenAI-compatible API, or Ollama.
 4. **Retrieval.** Set the chunk size and overlap in tokens, and top-K. Chunks are capped at the embedding model's input limit, and the wizard shows the limit.
 
+For embeddings and the LLM, the **Model** field lists the models the provider offers, fetched with the key and URL you entered. Pick **Other…** to type a name the list doesn't show. If the list can't be fetched, the field becomes a text box and shows the provider's error. Saved keys are shown masked and reused only with the URL they were saved for: change a URL and you have to enter the key again. Rotating a key or moving to a proxy URL doesn't require a re-index.
+
+Saving a change that the stored vectors depend on (vector database, collection, embedding provider or model) while documents are indexed asks whether to re-index them. A different embedding model always needs a new collection, since vectors from two models can't be mixed, and Setup suggests a name.
+
 ### Tokenization
 
 Text is chunked by tokens, not characters. Each page is split into sentences, and whole sentences are packed into chunks up to the size limit. A sentence that is longer than the limit is split on token boundaries. The last sentences of each chunk are carried into the next one as overlap. Chunks never cross pages, so each citation points to one page.
@@ -30,6 +34,8 @@ Text is chunked by tokens, not characters. Each page is split into sentences, an
 Token counts come from tiktoken `cl100k_base`, which is baked into the image. These counts are exact for OpenAI embedding models. Most open models (bge, nomic, and others) use their own tokenizers, which produce more tokens for the same text, so for those models the chunk size is capped at 75% of the model's limit. If tiktoken can't load, the app falls back to an approximate count. The Admin page shows which tokenizer is active.
 
 Press **Test** on each step, then **Save**. Then go to **Documents** to add PDFs. Once a file shows `ready`, use **Chat**.
+
+While a document is indexed, the Documents page shows its progress (pages read, then chunks embedded), and queued documents show their place in the queue. **Cancel** stops a queued or running document and removes its vectors, so it isn't searchable until you **Re-index** it. Large PDFs are read by up to 4 processes in parallel. Before chunking, lines repeated on most pages (running headers and footers), private-use font glyphs and letter-spaced text ("C h e c k  t h e") are cleaned up. Search returns distinct pages: up to 3 matching chunks from the same page are merged into one source. `top_k` is at most 50.
 
 ### Adding many PDFs at once
 

@@ -36,6 +36,9 @@ DEFAULTS = {
 }
 
 SECRET_KEYS = {"api_key", "dsn"}
+ADDRESS_KEYS = ("url", "base_url")  # where a secret beside them is sent
+MASK = "********"
+_LABELS = {"api_key": "API key", "dsn": "connection string", "url": "URL", "base_url": "base URL"}
 _lock = threading.Lock()
 
 
@@ -63,12 +66,38 @@ def save(cfg: dict) -> None:
 def redact(cfg):
     """Copy of the config safe to send to the browser: secrets are masked."""
     if isinstance(cfg, dict):
-        return {k: ("********" if k in SECRET_KEYS and v else redact(v)) for k, v in cfg.items()}
+        return {k: (MASK if k in SECRET_KEYS and v else redact(v)) for k, v in cfg.items()}
     return cfg
 
 
+class SecretNeeded(ValueError):
+    pass
+
+
 def unredact(new, old):
-    """Keep stored secrets when the browser sends back the mask."""
+    """Put stored secrets back where the browser sent the mask."""
     if isinstance(new, dict) and isinstance(old, dict):
-        return {k: (old.get(k) if v == "********" else unredact(v, old.get(k))) for k, v in new.items()}
+        return {k: (old.get(k) if k in SECRET_KEYS and v == MASK else unredact(v, old.get(k)))
+                for k, v in new.items()}
     return new
+
+
+def apply(body: dict, old: dict) -> dict:
+    """The saved settings with the browser's changes applied. A saved secret is never kept beside a changed
+    url/base_url, whether the mask was sent or the field left out: it would go to the new host."""
+    merged = _merge(old, unredact(body, old))
+    _check_secrets(body, old, merged)
+    return merged
+
+
+def _check_secrets(body, old, merged):
+    if not (isinstance(merged, dict) and isinstance(old, dict)):
+        return
+    body = body if isinstance(body, dict) else {}
+    moved = [k for k in ADDRESS_KEYS if merged.get(k) != old.get(k)]
+    for k in SECRET_KEYS & merged.keys():
+        typed = k in body and body[k] != MASK
+        if moved and merged[k] and not typed:
+            raise SecretNeeded(f"Enter the {_LABELS[k]} again: the {_LABELS[moved[0]]} changed")
+    for k, v in merged.items():
+        _check_secrets(body.get(k), old.get(k), v)

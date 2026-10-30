@@ -10,7 +10,8 @@ async function api(path, opts = {}) {
   if (!r.ok) {
     if (r.status === 401 && !path.startsWith("/api/auth/")) showAuth("login");
     if (r.status === 403 && /temporary password/.test(body.error)) showAuth("password");
-    throw new Error(body.error || body.detail || r.statusText);
+    const detail = typeof body.detail === "object" && !Array.isArray(body.detail) ? body.detail : null;
+    throw Object.assign(new Error(body.error || detail?.message || body.detail || r.statusText), { status: r.status, detail });
   }
   return body;
 }
@@ -100,13 +101,66 @@ async function updateTokenHint() {
   $("#token-hint").textContent = `Tokenizer: ${t.tokenizer}. This embedding model takes about ${t.model_limit} tokens per chunk` +
     (asked > t.effective_chunk_tokens ? `, so chunks will be capped at ${t.effective_chunk_tokens} tokens.` : ".");
 }
+// Each model input gets a dropdown of the provider's models; "Other…" (or a failed listing) falls back to typing a name.
+const OTHER = "__other__";
+const pickers = $$('input[name$=".model"]', form).map(input => {
+  const select = document.createElement("select");
+  const hint = document.createElement("span");
+  hint.className = "muted small";
+  input.before(select);
+  input.after(hint);
+  select.hidden = true;
+  // Runs before the form's change listener, which re-renders from input.value.
+  select.addEventListener("change", () => {
+    input.value = select.value === OTHER ? "" : select.value;
+    if (select.value === OTHER) setTimeout(() => input.focus());
+  });
+  return { input, select, hint, component: input.name.split(".")[0], key: null, models: null, error: "" };
+});
+function renderPicker(p) {
+  const cur = p.input.value;
+  p.select.hidden = !p.models?.length;
+  if (p.select.hidden) {
+    p.input.hidden = false;
+    p.hint.textContent = p.error ? `Couldn't list models (${p.error}). Type a model name.`
+      : p.models ? "The provider listed no models. Type a model name." : "";
+    return;
+  }
+  p.select.innerHTML = p.models.map(m => `<option value="${esc(m)}">${esc(m)}</option>`).join("") +
+    `<option value="${OTHER}">Other…</option>`;
+  p.select.value = p.models.includes(cur) ? cur : OTHER;
+  p.input.hidden = p.select.value !== OTHER;
+  p.hint.textContent = "";
+}
+async function refreshModels() {
+  const cfg = formToConfig();
+  await Promise.all(pickers.map(async p => {
+    if (p.input.closest("[data-show]").hidden) return;
+    // Refetch only when the provider's connection settings change, not when the model does.
+    const { model, ...conn } = get(cfg, p.input.name.replace(/\.model$/, ""));
+    const key = JSON.stringify(conn);
+    if (key !== p.key) {
+      p.key = key;
+      p.models = null; p.error = "";
+      renderPicker(p);  // drop the previous endpoint's list while loading
+      p.hint.textContent = "Loading models…";
+      const r = await api("/api/models/" + p.component, { method: "POST", body: JSON.stringify(cfg) })
+        .catch(e => ({ ok: false, error: e.message }));
+      if (p.key !== key) return;  // settings changed while loading
+      p.models = r.ok ? r.models : null;
+      p.error = r.ok ? "" : r.error;
+    }
+    renderPicker(p);
+  }));
+}
 async function loadSetup() {
   const cfg = await api("/api/config");
   $$("[name]", form).forEach(el => (el.value = get(cfg, el.name) ?? ""));
   updateVisibility();
   updateTokenHint();
+  refreshModels();
 }
-form.addEventListener("change", () => { updateVisibility(); updateTokenHint(); });
+form.addEventListener("change", () => { updateVisibility(); updateTokenHint(); refreshModels(); });
 $$("[data-test]", form).forEach(btn => btn.addEventListener("click", async () => {
   const out = $("#test-" + btn.dataset.test);
   out.className = "result"; out.textContent = "Testing…";
@@ -116,34 +170,70 @@ $$("[data-test]", form).forEach(btn => btn.addEventListener("click", async () =>
     out.textContent = r.ok ? `✓ ${r.detail} (${r.ms} ms)` : `✗ ${r.error}`;
   } catch (e) { out.className = "result bad"; out.textContent = "✗ " + e.message; }
 }));
-form.addEventListener("submit", async e => {
-  e.preventDefault();
+let saving = false;
+async function saveConfig(reindex) {
+  if (saving) return;  // a double click must not queue every document twice
   const out = $("#save-result");
+  const body = formToConfig();
+  if (reindex !== undefined) body.reindex = reindex;
+  saving = true;
+  $$("button", out).concat($$('button[type="submit"]', form)).forEach(b => (b.disabled = true));
   try {
-    await api("/api/config", { method: "PUT", body: JSON.stringify(formToConfig()) });
-    out.className = "result ok"; out.textContent = "Saved. You can upload documents now.";
-  } catch (err) { out.className = "result bad"; out.textContent = err.message; }
-});
+    await api("/api/config", { method: "PUT", body: JSON.stringify(body) });
+    out.className = "result ok";
+    out.textContent = reindex ? "Saved. Re-indexing all documents; see Documents for progress." : "Saved. You can upload documents now.";
+  } catch (err) {
+    out.className = "result bad";
+    out.textContent = err.message;
+    const d = err.detail;
+    if (d?.code !== "reindex_required") return;
+    // The stored vectors no longer match: offer to re-index, into a new collection if the model changed.
+    const btn = (label, onclick) => Object.assign(document.createElement("button"),
+      { type: "button", className: "small-btn", textContent: label, onclick });
+    out.append(" ", btn(d.collection ? `Use collection “${d.collection}” and re-index ${d.documents} documents`
+                                     : `Save and re-index ${d.documents} documents`, () => {
+      if (d.collection) form.elements["vector_store.collection"].value = d.collection;
+      saveConfig(true);
+    }));
+    if (!d.collection) out.append(" ", btn("Save without re-indexing", () => saveConfig(false)));
+  } finally {
+    saving = false;
+    $('button[type="submit"]', form).disabled = false;
+  }
+}
+form.addEventListener("submit", e => { e.preventDefault(); saveConfig(); });
 
 // ---------- documents ----------
-const statusClass = { ready: "ok", failed: "bad", processing: "warn", queued: "muted" };
+const statusClass = { ready: "ok", failed: "bad", processing: "warn", queued: "muted", cancelled: "muted" };
+const active = d => d.status === "queued" || d.status === "processing";
+function statusCell(d) {
+  const p = d.progress;
+  if (p) {
+    const what = p.stage === "reading" ? `reading pages ${p.done}/${p.total}` : `embedding ${p.done}/${p.total} chunks`;
+    return `processing · ${what}<progress max="${p.total || 1}" value="${p.done}"></progress>`;
+  }
+  if (d.queue_position) return `queued (#${d.queue_position})`;
+  return d.status + (d.error ? ": " + esc(d.error).slice(0, 80) : "");
+}
 async function loadDocuments() {
   const docs = await api("/api/documents");
   $("#doc-rows").innerHTML = docs.map(d => `<tr>
     <td>${esc(d.filename)}</td>
-    <td class="${statusClass[d.status]}" title="${esc(d.error)}">${d.status}${d.error ? ": " + esc(d.error).slice(0, 80) : ""}</td>
+    <td class="${statusClass[d.status]}" title="${esc(d.error)}">${statusCell(d)}</td>
     <td>${d.pages ?? ""}</td><td>${d.chunks ?? ""}</td><td>${fmtBytes(d.size)}</td><td>${fmtTime(d.created)}</td>
-    <td><button class="small-btn" data-reindex="${d.id}">Re-index</button>
+    <td>${active(d) ? `<button class="small-btn" data-cancel="${d.id}">Cancel</button>`
+                    : `<button class="small-btn" data-reindex="${d.id}">Re-index</button>`}
         <button class="small-btn" data-del="${d.id}">Delete</button></td></tr>`).join("")
     || `<tr><td colspan="7" class="muted">No documents yet.</td></tr>`;
   clearInterval(docTimer);
-  if (docs.some(d => d.status === "queued" || d.status === "processing")) docTimer = setInterval(loadDocuments, 2000);
+  if (docs.some(active)) docTimer = setInterval(loadDocuments, 2000);
 }
 $("#doc-rows").addEventListener("click", async e => {
-  const { del, reindex } = e.target.dataset;
+  const { del, reindex, cancel } = e.target.dataset;
   if (del) await api("/api/documents/" + del, { method: "DELETE" });
   if (reindex) await api(`/api/documents/${reindex}/reindex`, { method: "POST" });
-  if (del || reindex) loadDocuments();
+  if (cancel) await api(`/api/documents/${cancel}/cancel`, { method: "POST" }).catch(() => {});
+  if (del || reindex || cancel) loadDocuments();
 });
 // Upload one file per request, a few at a time, so each file gets its own progress bar.
 const UPLOAD_CONCURRENCY = 3;

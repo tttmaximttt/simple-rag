@@ -3,8 +3,12 @@ from functools import lru_cache
 
 import httpx
 
+from . import check, post_with_retry
+
 
 class OpenAIEmbeddings:
+    concurrency = 4  # embed() calls ingestion may run at once
+
     def __init__(self, api_key, model, base_url):
         self.model, self.base_url = model, base_url.rstrip("/")
         self.headers = {"Authorization": f"Bearer {api_key}"}
@@ -12,11 +16,18 @@ class OpenAIEmbeddings:
     def embed(self, texts):
         out = []
         for i in range(0, len(texts), 96):
-            r = httpx.post(f"{self.base_url}/embeddings", headers=self.headers,
-                           json={"model": self.model, "input": texts[i:i + 96]}, timeout=120)
-            r.raise_for_status()
+            r = post_with_retry(f"{self.base_url}/embeddings", headers=self.headers,
+                                json={"model": self.model, "input": texts[i:i + 96]}, timeout=120)
+            check(r)
             out += [d["embedding"] for d in sorted(r.json()["data"], key=lambda d: d["index"])]
         return out
+
+    def models(self):
+        r = httpx.get(f"{self.base_url}/models", headers=self.headers, timeout=30)
+        check(r)
+        ids = [m["id"] for m in r.json()["data"]]
+        # OpenAI lists every model; other compatible servers may not name embedding models this way.
+        return [i for i in ids if "embed" in i] or ids
 
 
 class OllamaEmbeddings:
@@ -25,8 +36,13 @@ class OllamaEmbeddings:
 
     def embed(self, texts):
         r = httpx.post(f"{self.url}/api/embed", json={"model": self.model, "input": texts}, timeout=300)
-        r.raise_for_status()
+        check(r)
         return r.json()["embeddings"]
+
+    def models(self):
+        r = httpx.get(f"{self.url}/api/tags", timeout=30)
+        check(r)
+        return [m["name"] for m in r.json()["models"]]
 
 
 @lru_cache(maxsize=2)
@@ -43,6 +59,10 @@ class LocalEmbeddings:
 
     def embed(self, texts):
         return [v.tolist() for v in _fastembed(self.model).embed(texts)]
+
+    def models(self):
+        from fastembed import TextEmbedding
+        return [m["model"] for m in TextEmbedding.list_supported_models()]
 
 
 def get(cfg):

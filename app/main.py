@@ -2,6 +2,7 @@ import hashlib
 import ipaddress
 import os
 import platform
+import re
 import secrets
 import shutil
 import time
@@ -9,6 +10,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 from urllib.parse import urlsplit
 
 import httpx
@@ -155,14 +157,20 @@ def health():
 
 
 def _draft_config(body: dict | None) -> dict:
-    old = config.load()
-    return config._merge(old, config.unredact(body or {}, old))
+    try:
+        cfg = config.apply(body or {}, config.load())
+    except config.SecretNeeded as e:
+        raise HTTPException(400, str(e))
+    for section, key in (("vector_store", "type"), ("embeddings", "provider"), ("llm", "provider")):
+        if not isinstance(config.DEFAULTS[section].get(cfg[section][key]), dict):
+            raise HTTPException(400, f"Unknown {section.replace('_', ' ')} {key}: {cfg[section][key]!r}")
+    return cfg
 
 
 @app.post("/api/tokenizer/limits")
 def token_limits(body: dict | None = None):
     """Embedding model limit and effective chunk size for (possibly unsaved) settings."""
-    cfg = _draft_config(body)
+    cfg = config._merge(config.load(), body or {})  # needs no secrets, so a changed URL beside a mask is fine
     return {"tokenizer": tokenizer.tokenizer_name(), "model_limit": tokenizer.model_limit(cfg),
             "effective_chunk_tokens": tokenizer.effective_chunk_tokens(cfg)}
 
@@ -172,13 +180,65 @@ def get_config():
     return config.redact(config.load())
 
 
+def _index_settings(cfg):
+    """What the stored vectors depend on: (where they are, which embedding model made them). Credentials and
+    provider endpoints are left out: rotating a password or moving to a proxy doesn't change the vectors."""
+    v, e = cfg["vector_store"], cfg["embeddings"]
+    t = v["type"]
+    if t == "pgvector":
+        u = urlsplit(v["pgvector"]["dsn"])
+        place = (u.hostname, u.port, u.path)
+    else:
+        place = v[t].get("url") or v[t].get("path")
+    return (t, place, v["collection"]), (e["provider"], e[e["provider"]].get("model"))
+
+
+def _slug(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")[:40]
+
+
+def _collection_for(collection: str, old_model: str, new_model: str) -> str:
+    """A new collection name for vectors from new_model, replacing a suffix this function added for old_model."""
+    base = collection.removesuffix("_" + _slug(old_model)) or collection
+    name = f"{base}_{_slug(new_model)}"[:63].strip("_")
+    n = 2
+    while name == collection:  # e.g. the same model name from another provider
+        name = f"{base}_{_slug(new_model)}"[:60].strip("_") + f"_{n}"
+        n += 1
+    return name
+
+
 @app.put("/api/config")
 def put_config(body: dict):
+    """Save the wizard settings. If they change where vectors live or which model makes them while documents are
+    indexed, answer 409 unless the body says what to do: "reindex": true to re-index everything after saving, or
+    false to save anyway. A different embedding model always needs a new collection, as vectors can't be mixed."""
+    reindex = body.pop("reindex", None)
+    if reindex is not None and not isinstance(reindex, bool):
+        raise HTTPException(400, '"reindex" must be true or false')
+    old = config.load()
     new = _draft_config(body)
+    indexed = db.rows("SELECT COUNT(*) n FROM documents WHERE status='ready'")[0]["n"]
+    (old_where, old_model), (new_where, new_model) = _index_settings(old), _index_settings(new)
+    if old["configured"] and indexed and (old_where, old_model) != (new_where, new_model):
+        mixing = old_model != new_model and old_where == new_where
+        if mixing or reindex is None:
+            model = lambda m: m[1] or m[0]
+            raise HTTPException(409, {
+                "code": "reindex_required", "documents": indexed,
+                "collection": _collection_for(new_where[2], model(old_model), model(new_model)) if mixing else None,
+                "message": (f"Vectors from {model(old_model)} can't share a collection with {model(new_model)}. "
+                            f"Save into a new collection and re-index the {indexed} documents."
+                            if mixing else f"The {indexed} indexed documents were stored with the old settings, "
+                            "so search won't find them until they're re-indexed.")})
     new["configured"] = True
     config.save(new)
     db.log("info", "setup", f"config saved: store={new['vector_store']['type']} "
            f"embeddings={new['embeddings']['provider']} llm={new['llm']['provider']}")
+    if reindex:
+        # Queued ones will use the new settings anyway; cancelled ones stay cancelled. Running ones restart.
+        for d in db.rows("SELECT id FROM documents WHERE status IN ('ready','failed','processing')"):
+            rag.enqueue(d["id"])
     return config.redact(new)
 
 
@@ -207,11 +267,33 @@ def test_component(component: str, body: dict | None = None):
     return _check(component, _draft_config(body))
 
 
+@app.post("/api/models/{component}")
+def list_models(component: str, body: dict | None = None):
+    """Models the (possibly unsaved) embeddings or LLM provider offers, for the wizard's model picker."""
+    factory = {"embeddings": embeddings.get, "llm": llm.get}.get(component)
+    if not factory:
+        raise HTTPException(404, "unknown component")
+    cfg = _draft_config(body)
+    try:
+        return {"ok": True, "models": sorted(set(factory(cfg).models()))}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
 # ---------- documents ----------
 
 @app.get("/api/documents")
 def list_documents():
-    return db.rows("SELECT * FROM documents ORDER BY created DESC")
+    docs = db.rows("SELECT * FROM documents ORDER BY created DESC")
+    queued = {d["id"] for d in docs if d["status"] == "queued"}
+    position = {i: n for n, i in enumerate(dict.fromkeys(i for i in rag.pending() if i in queued), start=1)}
+    prog = rag.progress()
+    for d in docs:
+        if d["id"] in position:
+            d["queue_position"] = position[d["id"]]
+        if d["status"] == "processing" and prog.get("doc_id") == d["id"]:
+            d["progress"] = {k: prog[k] for k in ("stage", "done", "total")}
+    return docs
 
 
 class TooLarge(Exception):
@@ -349,6 +431,15 @@ def reindex(doc_id: str):
     return {"ok": True}
 
 
+@app.post("/api/documents/{doc_id}/cancel")
+def cancel_ingest(doc_id: str):
+    if not db.rows("SELECT id FROM documents WHERE id=?", (doc_id,)):
+        raise HTTPException(404)
+    if not rag.cancel(doc_id):
+        raise HTTPException(409, "Not queued or processing")
+    return {"ok": True}
+
+
 @app.post("/api/documents/reindex-all")
 def reindex_all():
     ids = [d["id"] for d in db.rows("SELECT id FROM documents")]
@@ -372,7 +463,7 @@ def delete_document(doc_id: str):
 
 class Question(BaseModel):
     question: str
-    k: int | None = None
+    k: int | None = Field(None, ge=1, le=rag.MAX_TOP_K)
 
 
 @app.post("/api/chat")
@@ -482,12 +573,12 @@ def queries(limit: int = 100):
 
 class QueryIn(BaseModel):
     question: str
-    top_k: int | None = None
+    top_k: int | None = Field(None, ge=1, le=rag.MAX_TOP_K)
 
 
 class RetrieveIn(BaseModel):
     query: str
-    top_k: int | None = None
+    top_k: int | None = Field(None, ge=1, le=rag.MAX_TOP_K)
 
 
 @app.post("/v1/query", operation_id="askDocuments")
@@ -538,4 +629,13 @@ def v1_openapi(request: Request):
 # MCP endpoint at /mcp; must come before the static catch-all mount.
 app.router.routes.extend(mcp_http_app.routes)
 
-app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")
+class _RevalidatedStatic(StaticFiles):
+    """Make browsers revalidate (cheap 304s via ETag) so an upgrade never runs a stale app.js."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", _RevalidatedStatic(directory=Path(__file__).parent / "static", html=True), name="static")

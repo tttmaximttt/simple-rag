@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RAG Studio</title>
-<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
 <header>
@@ -90,7 +90,7 @@
         <label>Ollama URL <input name="embeddings.ollama.url"></label>
         <label>Model <input name="embeddings.ollama.model"></label>
       </div>
-      <p class="muted small">Changing the embedding model after ingesting requires re-indexing (Admin → Re-index all) into a new collection.</p>
+      <p class="muted small">Changing the embedding model after ingesting needs a new collection and a re-index; saving offers both.</p>
       <button type="button" data-test="embeddings">Test</button> <span class="result" id="test-embeddings"></span>
     </fieldset>
 
@@ -206,6 +206,6 @@
   <pre id="events"></pre>
 </section>
 </main>
-<script src="app.js"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>
