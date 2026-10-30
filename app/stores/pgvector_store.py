@@ -50,7 +50,9 @@ class PgVectorStore:
 
     def delete_doc(self, doc_id):
         with self._conn() as c:
-            c.execute(f"DELETE FROM {self.table} WHERE doc_id = %s", (doc_id,))
+            # Ingestion clears old chunks before the first upsert creates the table.
+            if c.execute("SELECT to_regclass(%s)", (self.table,)).fetchone()[0]:
+                c.execute(f"DELETE FROM {self.table} WHERE doc_id = %s", (doc_id,))
 
     def count(self):
         with self._conn() as c:
