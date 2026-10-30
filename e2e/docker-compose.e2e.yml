@@ -1,0 +1,30 @@
+# Overlay for the e2e tests, used by e2e/run.sh under its own compose project ("rag-e2e"), so its
+# containers and volumes are separate from your real stack. Paths are relative to the repo root
+# (the first compose file).
+services:
+  app:
+    environment:
+      ADMIN_PASSWORD: ${E2E_ADMIN_PASSWORD:-e2e-temporary-pw}
+    volumes:
+      # Replaces ./import, so the folder-import test can drop files in from the host.
+      - ${E2E_IMPORT_DIR:?set by e2e/run.sh}:/import:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8080/api/health')"]
+      interval: 2s
+      retries: 60
+    depends_on:
+      fake-models:
+        condition: service_healthy
+
+  # OpenAI-compatible stand-in for the embedding and chat APIs, so the default run needs no keys.
+  fake-models:
+    image: python:3.12-slim
+    working_dir: /fake
+    command: ["python", "fake_models.py", "--port", "9000"]
+    volumes:
+      - ./e2e/fake_models.py:/fake/fake_models.py:ro
+      - ./e2e/pdfs.py:/fake/pdfs.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:9000/health')"]
+      interval: 2s
+      retries: 30
