@@ -316,12 +316,20 @@ def _join_overlap(a: str, b: str) -> str:
     return f"{a} {b}"
 
 
+def search(question, k=None, rewrite_question=None):
+    """retrieve(), with the question rewritten into search queries first when that's on: the Setup option,
+    unless the caller says otherwise. Returns (question language or None, queries used, hits)."""
+    cfg = config.load()
+    on = cfg["rag"]["query_rewrite"] if rewrite_question is None else rewrite_question
+    language, queries = rewrite(question, cfg) if on else (None, [])
+    return language, queries, retrieve(question, k, queries)
+
+
 def answer(question, k=None):
     t0 = time.time()
     try:
         cfg = config.load()
-        language, queries = rewrite(question, cfg) if cfg["rag"]["query_rewrite"] else (None, [])
-        hits = retrieve(question, k, queries)
+        language, queries, hits = search(question, k)
         t1 = time.time()
         context = "\n\n".join(f"[{n}] ({h['filename']}, page {h['page']})\n{h['text']}"
                               for n, h in enumerate(hits, start=1))

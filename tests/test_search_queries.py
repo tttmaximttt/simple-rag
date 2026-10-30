@@ -174,3 +174,34 @@ def test_answer_rewrites_only_when_enabled(tmp_path, monkeypatch, rewrite):
 def test_documents_have_a_language_column():
     db.init()
     assert "language" in {r["name"] for r in db.rows("PRAGMA table_info(documents)")}
+
+
+@pytest.fixture
+def searching(tmp_path, monkeypatch):
+    """Saved settings with rewriting on, a fake LLM, embeddings and store; returns the LLM to count calls."""
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
+    config.save(config._merge(config.DEFAULTS, {"rag": {"query_rewrite": True}}))
+    fake = FakeLLM("Question language: English\ncilindrada motor")
+    monkeypatch.setattr(rag.llm, "get", lambda cfg: fake)
+    monkeypatch.setattr(rag.embeddings, "get", lambda cfg: Emb())
+    monkeypatch.setattr(rag.stores, "get", lambda cfg: Store())
+    return fake
+
+
+@pytest.mark.parametrize("body, queries, pages", [
+    ({}, ["cilindrada motor"], [456, 38]),  # follows the setting
+    ({"rewrite": False}, [], [456]),
+])
+def test_v1_retrieve_rewrites_like_chat(logged_in, searching, body, queries, pages):
+    key = logged_in.post("/api/admin/keys", json={"name": "k"}).json()["key"]
+    r = logged_in.post("/v1/retrieve", json={"query": "engine volume", **body}, headers={"x-api-key": key}).json()
+    assert r["queries"] == queries and [h["page"] for h in r["results"]] == pages
+    assert len(searching.prompts) == len(queries)
+
+
+def test_mcp_search_rewrites_and_reports_the_queries(searching):
+    import asyncio
+    from app import mcp_server
+    r = asyncio.run(mcp_server.search("engine volume", 5))
+    assert r["queries"] == ["cilindrada motor"] and [x["title"] for x in r["results"]][1] == "catalogo.pdf (page 38)"
+    assert asyncio.run(mcp_server.search("engine volume", 5, False))["queries"] == []

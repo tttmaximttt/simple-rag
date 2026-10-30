@@ -202,7 +202,7 @@
 
   <h2>MCP tools</h2>
   <table><tbody>
-    <tr><td><code>search(query, top_k)</code></td><td>Passages that match the query, each with an id and page.</td></tr>
+    <tr><td><code>search(query, top_k)</code></td><td>Passages that match the query, each with an id and page. The server also searches with the query translated into the documents' languages (see Setup → Retrieval).</td></tr>
     <tr><td><code>fetch(id)</code></td><td>The full text of the page a search result came from.</td></tr>
     <tr><td><code>ask(question, top_k)</code></td><td>An answer written by the LLM configured in Setup, with sources.</td></tr>
     <tr><td><code>list_documents()</code></td><td>The uploaded documents and their indexing status.</td></tr>

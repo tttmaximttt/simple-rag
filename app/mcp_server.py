@@ -19,12 +19,14 @@ def _hit_id(h):
 
 
 @mcp.tool()
-async def search(query: str, top_k: int = 8) -> dict:
+async def search(query: str, top_k: int = 8, rewrite: bool | None = None) -> dict:
     """Semantic search over the uploaded documents. Returns matching passages with ids
     that can be passed to `fetch` to read the whole page. Documents may be in another language than the
-    question (see `list_documents`): search with the terms those documents would use, in their language."""
-    hits = await to_thread.run_sync(rag.retrieve, query, top_k)
-    return {"results": [{"id": _hit_id(h), "title": f"{h['filename']} (page {h['page']})",
+    query (see `list_documents`); unless `rewrite` is false or the server turned it off, the server also
+    searches with the query reworded and translated into the documents' languages, listed in `queries`."""
+    _, queries, hits = await to_thread.run_sync(rag.search, query, top_k, rewrite)
+    return {"queries": queries,
+            "results": [{"id": _hit_id(h), "title": f"{h['filename']} (page {h['page']})",
                          "text": h["text"], "score": round(float(h["score"]), 4),
                          "url": f"rag://{_hit_id(h)}"} for h in hits]}
 
