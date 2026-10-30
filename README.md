@@ -285,3 +285,26 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 DATA_DIR=./data uvicorn app.main:app --reload --port 8080
 ```
+
+### End-to-end tests
+
+`e2e/` drives a real running stack from the outside: the first-run login and setup wizard, uploads, chat and the Admin page in a browser (Playwright), plus the `/v1` API and the MCP server over HTTP. By default the models are a small fake OpenAI-compatible server (`e2e/fake_models.py`), so no API keys are needed and answers are deterministic.
+
+```bash
+e2e/run.sh            # fresh docker stack (app + pgvector + fake models) on port 18080, removed afterwards
+e2e/run.sh --local    # no docker: uvicorn + embedded Chroma + fake models (needs python3.12)
+e2e/run.sh --keep     # leave the stack running to poke at it; the admin password is e2e-admin-password-1
+e2e/run.sh -k mcp -x  # other arguments go to pytest
+```
+
+The script uses the active virtualenv or `./.venv`, installs `e2e/requirements.txt`, and downloads Playwright's Chromium on first run. The docker stack runs as its own compose project (`rag-e2e`), so it doesn't touch your real data or containers.
+
+To test with real models, pick them with env vars (the tests then check the same facts against real answers):
+
+```bash
+E2E_EMBEDDINGS=openai E2E_LLM=anthropic OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... e2e/run.sh
+E2E_EMBEDDINGS=local E2E_LLM=openai OPENAI_API_KEY=sk-... e2e/run.sh   # fastembed, downloads the model
+E2E_VECTOR_STORE=qdrant e2e/run.sh                                      # or chroma; default pgvector
+```
+
+Other settings (`E2E_PORT`, `E2E_BUILD=0` to reuse the built image, `E2E_INGEST_TIMEOUT`, `E2E_CHROMIUM` for an existing Chromium binary) are described in `e2e/run.sh` and `e2e/conftest.py`.

@@ -9,3 +9,4 @@ import
 .pytest_cache
 tests
 .env
+e2e
