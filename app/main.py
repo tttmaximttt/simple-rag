@@ -456,6 +456,12 @@ def delete_document(doc_id: str):
     return {"ok": True}
 
 
+@app.get("/api/connect")
+def connect_info():
+    """The address MCP clients and apps should use, for the Connect page (it falls back to the browser's)."""
+    return {"public_url": PUBLIC_URL}
+
+
 # ---------- chat ----------
 
 class Question(BaseModel):

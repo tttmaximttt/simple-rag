@@ -57,3 +57,8 @@ pre { background: var(--panel); border: 1px solid var(--border); border-radius: 
 #account a { color: var(--muted); }
 .auth-card { max-width: 420px; margin: 3rem auto; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; }
 .auth-card h1 { margin-top: 0; }
+.addresses td:first-child { width: 9rem; color: var(--muted); } .addresses code { word-break: break-all; }
+.client { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: .5rem .9rem; margin: .5rem 0; }
+.client summary { font-weight: 600; } .client summary .muted { font-weight: normal; }
+.client pre { position: relative; white-space: pre-wrap; word-break: break-all; }
+.copy { float: right; margin-left: .5rem; }

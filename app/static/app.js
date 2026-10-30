@@ -56,7 +56,8 @@ $("#logout").addEventListener("click", async () => {
 });
 
 // ---------- routing ----------
-const views = { setup: loadSetup, documents: loadDocuments, chat: () => $("#question").focus(), admin: loadAdmin };
+const views = { setup: loadSetup, documents: loadDocuments, chat: () => $("#question").focus(), connect: loadConnect,
+                admin: loadAdmin };
 let docTimer;
 async function route() {
   await refreshSession();
@@ -357,10 +358,95 @@ $("#chat-form").addEventListener("submit", async e => {
   } catch (err) { pending.innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
 });
 
+// ---------- connect ----------
+// Ready-to-paste setups for each client, filled with this server's address and a key created on the page.
+let connectKey = "";  // shown once and kept only while the page is open
+const CLIENTS = [
+  { name: "Claude Code", where: "works with localhost", text: "Run in a terminal:",
+    code: (u, k) => `claude mcp add --transport http rag-studio ${u}/mcp \\\n  --header "Authorization: Bearer ${k}"` },
+  { name: "Claude Desktop", where: "works with localhost",
+    text: "Settings → Developer → Edit Config, add this to claude_desktop_config.json, then restart Claude Desktop (needs Node.js for npx). With a public HTTPS address you can instead add a custom connector under Settings → Connectors with the claude.ai URL below.",
+    code: (u, k) => JSON.stringify({ mcpServers: { "rag-studio": { command: "npx",
+      args: ["-y", "mcp-remote", `${u}/mcp`, "--header", "Authorization: Bearer ${RAG_KEY}"], env: { RAG_KEY: k } } } }, null, 2) },
+  { name: "claude.ai (web and mobile)", where: "needs public HTTPS",
+    text: "Settings → Connectors → Add custom connector, paste this URL, then turn the connector on from a chat's tools menu. The key is in the URL, so use a key just for this.",
+    code: (u, k) => `${u}/mcp?key=${k}` },
+  { name: "ChatGPT connector (MCP)", where: "needs public HTTPS",
+    text: "Settings → Connectors → Advanced → turn on developer mode, then create a connector with this URL and no authentication.",
+    code: (u, k) => `${u}/mcp?key=${k}` },
+  { name: "ChatGPT custom GPT (Actions)", where: "needs public HTTPS",
+    text: "Create a GPT → Configure → Create new action → Import from URL with the address below. Authentication: API Key, type Bearer, with your key. Instructions: “Use searchDocuments or askDocuments to answer from my documents and cite the filename and page.”",
+    code: (u) => `${u}/v1/openapi.json` },
+  { name: "HTTP API (curl)", where: "any app or script",
+    text: "Ask a question and get an answer with sources, or fetch matching passages to use with your own LLM.",
+    code: (u, k) => `# Answer with sources\ncurl -s ${u}/v1/query -H "Authorization: Bearer ${k}" \\\n  -H "Content-Type: application/json" -d '{"question": "How long does charging take?", "top_k": 5}'\n\n` +
+      `# Matching passages only\ncurl -s ${u}/v1/retrieve -H "Authorization: Bearer ${k}" \\\n  -H "Content-Type: application/json" -d '{"query": "charging time", "top_k": 8}'\n\n` +
+      `# Upload PDFs, list documents\ncurl -s ${u}/v1/documents -H "Authorization: Bearer ${k}" -F files=@manual.pdf\ncurl -s ${u}/v1/documents -H "Authorization: Bearer ${k}"` },
+  { name: "Python", where: "any app or script", text: "With httpx or requests:",
+    code: (u, k) => `import httpx\n\nRAG = "${u}/v1"\nHEADERS = {"Authorization": "Bearer ${k}"}\n\n` +
+      `r = httpx.post(f"{RAG}/query", headers=HEADERS, json={"question": "How long does charging take?"}, timeout=120)\n` +
+      `r.raise_for_status()\nprint(r.json()["answer"])\nfor s in r.json()["sources"]:\n    print(s["filename"], "page", s["page"])` },
+  { name: "Claude API (MCP connector)", where: "needs public HTTPS", text: "Let Claude call the tools from your own app:",
+    code: (u, k) => `curl https://api.anthropic.com/v1/messages \\\n  -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" \\\n  -H "anthropic-beta: mcp-client-2025-11-20" -H "content-type: application/json" \\\n  -d '${JSON.stringify({ model: "claude-opus-5-5", max_tokens: 4096,
+      mcp_servers: [{ type: "url", url: `${u}/mcp`, name: "rag-studio", authorization_token: k }],
+      tools: [{ type: "mcp_toolset", mcp_server_name: "rag-studio" }],
+      messages: [{ role: "user", content: "Search my documents for the charging time and summarize it." }] })}'` },
+  { name: "OpenAI API (Responses, remote MCP)", where: "needs public HTTPS", text: "Let an OpenAI model call the tools:",
+    code: (u, k) => `curl https://api.openai.com/v1/responses \\\n  -H "Authorization: Bearer $OPENAI_API_KEY" -H "Content-Type: application/json" \\\n  -d '${JSON.stringify({ model: "gpt-5",
+      tools: [{ type: "mcp", server_label: "rag-studio", server_url: `${u}/mcp`, headers: { Authorization: `Bearer ${k}` },
+                require_approval: "never" }], input: "Search my documents for the charging time and summarize it." })}'` },
+];
+function copyButton(text) {
+  const b = Object.assign(document.createElement("button"), { type: "button", className: "small-btn copy", textContent: "Copy" });
+  b.onclick = async () => {
+    try { await navigator.clipboard.writeText(text()); b.textContent = "Copied"; }
+    catch { b.textContent = "Select and copy"; }
+    setTimeout(() => (b.textContent = "Copy"), 1500);
+  };
+  return b;
+}
+let connectBase = location.origin;
+function renderConnect() {
+  const u = connectBase, k = connectKey || "YOUR_KEY";
+  const urls = [["MCP server", `${u}/mcp`], ["HTTP API", `${u}/v1`], ["OpenAPI spec", `${u}/v1/openapi.json`]];
+  $("#connect-urls").replaceChildren(...urls.map(([label, url]) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(label)}</td><td><code>${esc(url)}</code></td><td></td>`;
+    tr.lastChild.append(copyButton(() => url));
+    return tr;
+  }));
+  $("#connect-local").hidden = !/^https?:\/\/(localhost|127\.|\[::1\]|0\.0\.0\.0)/.test(u);
+  const open = new Set($$("#connect-clients details[open]").map(d => d.dataset.name));
+  $("#connect-clients").replaceChildren(...CLIENTS.map(c => {
+    const d = Object.assign(document.createElement("details"), { className: "client" });
+    d.dataset.name = c.name;
+    d.open = open.has(c.name);
+    const code = c.code(u, k);
+    d.innerHTML = `<summary>${esc(c.name)} <span class="muted small">· ${esc(c.where)}</span></summary>
+      <p class="small">${esc(c.text)}</p><pre></pre>`;
+    const pre = $("pre", d);
+    pre.textContent = code;
+    pre.prepend(copyButton(() => code));
+    return d;
+  }));
+}
+async function loadConnect() {
+  renderConnect();
+  try { connectBase = (await api("/api/connect")).public_url || location.origin; } catch { /* keep the browser's */ }
+  renderConnect();
+}
+$("#connect-key-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const { key } = await api("/api/admin/keys", { method: "POST", body: JSON.stringify({ name: $("#connect-key-name").value || "connect" }) });
+  connectKey = key;
+  $("#connect-key").replaceChildren("New key, filled into the examples below (copy it now, it won't be shown again): ",
+    Object.assign(document.createElement("code"), { textContent: key }), " ", copyButton(() => key));
+  $("#connect-key-name").value = "";
+  renderConnect();
+});
+
 // ---------- admin ----------
 async function loadKeys() {
-  $("#api-base").textContent = location.origin + "/v1";
-  $("#mcp-url").textContent = location.origin + "/mcp";
   const keys = await api("/api/admin/keys");
   $("#key-rows").innerHTML = keys.map(k => `<tr><td>${esc(k.name)}</td><td><code>${esc(k.prefix)}…</code></td>
     <td>${fmtTime(k.created)}</td><td>${k.last_used ? fmtTime(k.last_used) : "never"}</td>
