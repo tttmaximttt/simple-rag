@@ -119,7 +119,7 @@ curl -s http://localhost:8080/v1/documents -H "Authorization: Bearer $RAG_KEY" -
 curl -s http://localhost:8080/v1/documents -H "Authorization: Bearer $RAG_KEY"
 ```
 
-FastAPI serves interactive API docs at `/docs`.
+The OpenAPI spec of the `/v1` API is at `/v1/openapi.json`. The **Connect** page in the UI shows these addresses for your server and ready-to-paste setups for each client below, filled with a key you create there.
 
 ## Connecting Claude and ChatGPT
 
@@ -132,7 +132,7 @@ RAG Studio exposes an **MCP server** at `/mcp` (streamable HTTP) with four tools
 
 The `search` and `fetch` names and result shapes follow the convention that ChatGPT connectors and deep research expect.
 
-Authentication uses an API key from **Admin → API keys**. Send it as `Authorization: Bearer <key>`. Clients that only take a URL can append `?key=<key>` instead. The key then shows up in the URLs of proxy logs, so use a dedicated key that you can revoke.
+The **Connect** page in the UI shows the MCP URL for your server and the setup for each client below. Authentication uses an API key from **Connect** or **Admin → API keys**. Send it as `Authorization: Bearer <key>`. Clients that only take a URL can append `?key=<key>` instead. The key then shows up in the URLs of proxy logs, so use a dedicated key that you can revoke.
 
 > Hosted clients (claude.ai, ChatGPT, the Claude API, and the OpenAI API) connect from the provider's cloud. They need a **public HTTPS URL**, for example `https://rag.example.com`. On a laptop, use a tunnel such as `cloudflared tunnel --url http://localhost:8080` or ngrok. Claude Code and the `mcp-remote` bridge for Claude Desktop also work with `localhost`.
 

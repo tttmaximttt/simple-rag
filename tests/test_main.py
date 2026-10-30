@@ -114,3 +114,10 @@ def test_models_reports_provider_errors(logged_in, monkeypatch):
     monkeypatch.setattr(llm.httpx, "get", _fake_get(401, {"error": "bad key"}))
     r = logged_in.post("/api/models/llm", json={"llm": {"provider": "anthropic"}}).json()
     assert not r["ok"] and "401" in r["error"] and "bad key" in r["error"]
+
+
+def test_connect_info_reports_the_public_url(client, logged_in, monkeypatch):
+    monkeypatch.setattr(main, "PUBLIC_URL", "https://rag.example.com")
+    assert logged_in.get("/api/connect").json() == {"public_url": "https://rag.example.com"}
+    client.cookies.clear()
+    assert client.get("/api/connect").status_code == 401

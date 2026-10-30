@@ -13,6 +13,7 @@
     <a href="#setup">Setup</a>
     <a href="#documents">Documents</a>
     <a href="#chat">Chat</a>
+    <a href="#connect">Connect</a>
     <a href="#admin">Admin</a>
   </nav>
   <span id="account" hidden><span class="muted" id="account-name"></span>
@@ -171,6 +172,42 @@
   </form>
 </section>
 
+<section id="view-connect" hidden>
+  <h1>Connect</h1>
+  <p class="muted">Use your documents from Claude, ChatGPT, or your own code. Two ways in:
+    the <b>MCP server</b> gives AI assistants tools to search and read your documents,
+    and the <b>HTTP API</b> lets any app ask questions or fetch matching passages.</p>
+
+  <h2>1. Your addresses</h2>
+  <table class="addresses"><tbody id="connect-urls"></tbody></table>
+  <p id="connect-local" class="warn small" hidden>This is a local address. Claude Code, Claude Desktop, scripts and
+    apps on this machine can use it, but claude.ai, ChatGPT and the Claude/OpenAI APIs connect from the internet and
+    need a public HTTPS address: deploy behind a proxy and set <code>PUBLIC_URL</code>, or open a tunnel with
+    <code>cloudflared tunnel --url http://localhost:8080</code> and use the URL it prints.</p>
+
+  <h2>2. An API key</h2>
+  <p class="muted small">Every client needs a key. It's shown once; this page fills it into the examples below
+    until you leave it. Revoke keys under <a href="#admin">Admin</a>.</p>
+  <form id="connect-key-form" class="row">
+    <input id="connect-key-name" placeholder="Key name, e.g. claude-desktop">
+    <button>Create key</button>
+  </form>
+  <p id="connect-key" class="small"></p>
+
+  <h2>3. Pick your client</h2>
+  <div id="connect-clients"></div>
+
+  <h2>MCP tools</h2>
+  <table><tbody>
+    <tr><td><code>search(query, top_k)</code></td><td>Passages that match the query, each with an id and page.</td></tr>
+    <tr><td><code>fetch(id)</code></td><td>The full text of the page a search result came from.</td></tr>
+    <tr><td><code>ask(question, top_k)</code></td><td>An answer written by the LLM configured in Setup, with sources.</td></tr>
+    <tr><td><code>list_documents()</code></td><td>The uploaded documents and their indexing status.</td></tr>
+  </tbody></table>
+  <p class="muted small">Assistants usually call <code>search</code> and then <code>fetch</code>, and write the answer
+    themselves. <code>ask</code> uses this server's LLM instead.</p>
+</section>
+
 <section id="view-admin" hidden>
   <h1>Admin & diagnostics <button id="refresh" class="small-btn">Refresh</button></h1>
   <div class="cards" id="cards"></div>
@@ -181,7 +218,7 @@
   <button id="reindex-all">Re-index all documents</button>
 
   <h2>API keys</h2>
-  <p class="muted small">Use these for the HTTP API at <code id="api-base"></code> and the MCP server at <code id="mcp-url"></code> (for Claude and ChatGPT). Setup steps are in the README.</p>
+  <p class="muted small">Keys authenticate the HTTP API and the MCP server. See <a href="#connect">Connect</a> for the URLs and ready-to-paste setups.</p>
   <form id="key-form" class="row">
     <input id="key-name" placeholder="Key name, e.g. my-app">
     <button>Create key</button>

@@ -3,7 +3,7 @@ from functools import lru_cache
 
 import httpx
 
-from . import check, post_with_retry
+from . import check, ollama_models, openai_model_ids, post_with_retry
 
 
 class OpenAIEmbeddings:
@@ -23,9 +23,7 @@ class OpenAIEmbeddings:
         return out
 
     def models(self):
-        r = httpx.get(f"{self.base_url}/models", headers=self.headers, timeout=30)
-        check(r)
-        ids = [m["id"] for m in r.json()["data"]]
+        ids = openai_model_ids(self.base_url, self.headers)
         # OpenAI lists every model; other compatible servers may not name embedding models this way.
         return [i for i in ids if "embed" in i] or ids
 
@@ -40,9 +38,7 @@ class OllamaEmbeddings:
         return r.json()["embeddings"]
 
     def models(self):
-        r = httpx.get(f"{self.url}/api/tags", timeout=30)
-        check(r)
-        return [m["name"] for m in r.json()["models"]]
+        return ollama_models(self.url)
 
 
 @lru_cache(maxsize=2)
