@@ -32,7 +32,8 @@ DEFAULTS = {
         "ollama": {"url": "http://ollama:11434", "model": "llama3.1"},
         "temperature": 0.2,
     },
-    "rag": {"chunk_tokens": 400, "chunk_overlap_tokens": 60, "top_k": 5},
+    # query_rewrite: have the LLM turn each question into search queries in the documents' languages.
+    "rag": {"chunk_tokens": 400, "chunk_overlap_tokens": 60, "top_k": 5, "query_rewrite": True},
 }
 
 SECRET_KEYS = {"api_key", "dsn"}

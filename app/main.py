@@ -481,12 +481,13 @@ def chat(q: Question):
 
 @app.post("/api/admin/retrieve")
 def debug_retrieve(q: Question):
+    """Retrieval as Chat and the API do it, including the rewritten queries when that's on."""
     t0 = time.time()
     try:
-        hits = rag.retrieve(q.question, q.k)
+        _, queries, hits = rag.search(q.question, q.k)
     except Exception as e:
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
-    return {"ms": round((time.time() - t0) * 1000), "hits": hits}
+    return {"ms": round((time.time() - t0) * 1000), "queries": queries, "hits": hits}
 
 
 @app.get("/api/admin/status")
@@ -582,6 +583,8 @@ class QueryIn(BaseModel):
 class RetrieveIn(BaseModel):
     query: str
     top_k: int | None = Field(None, ge=1, le=rag.MAX_TOP_K)
+    rewrite: bool | None = Field(None, description="Also search with the query reworded and translated into the "
+                                 "documents' languages by the server's LLM. Defaults to the server's setting.")
 
 
 @app.post("/v1/query", operation_id="askDocuments")
@@ -595,9 +598,10 @@ def v1_query(q: QueryIn):
 
 @app.post("/v1/retrieve", operation_id="searchDocuments")
 def v1_retrieve(q: RetrieveIn):
-    """Retrieval only: the top matching chunks, for use with your own LLM."""
+    """Retrieval only: the top matching pages, for use with your own LLM, and the extra queries searched."""
     try:
-        return {"results": rag.retrieve(q.query, q.top_k)}
+        _, queries, hits = rag.search(q.query, q.top_k, q.rewrite)
+        return {"results": hits, "queries": queries}
     except Exception as e:
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
 

@@ -87,7 +87,8 @@ function set(o, path, v) {
 }
 function formToConfig() {
   const cfg = {};
-  $$("[name]", form).forEach(el => set(cfg, el.name, el.type === "number" ? Number(el.value) : el.value));
+  $$("[name]", form).forEach(el => set(cfg, el.name,
+    el.type === "checkbox" ? el.checked : el.type === "number" ? Number(el.value) : el.value));
   return cfg;
 }
 function updateVisibility() {
@@ -156,7 +157,8 @@ async function refreshModels() {
 }
 async function loadSetup() {
   const cfg = await api("/api/config");
-  $$("[name]", form).forEach(el => (el.value = get(cfg, el.name) ?? ""));
+  $$("[name]", form).forEach(el => el.type === "checkbox" ? (el.checked = !!get(cfg, el.name))
+                                                          : (el.value = get(cfg, el.name) ?? ""));
   updateVisibility();
   updateTokenHint();
   refreshModels();
@@ -337,6 +339,8 @@ $("#import-folder").addEventListener("click", async () => {
 });
 
 // ---------- chat ----------
+const renderQueries = qs => qs?.length
+  ? `<p class="muted small">Also searched for: ${qs.map(q => `“${esc(q)}”`).join(" · ")}</p>` : "";
 function addMsg(cls, html) {
   const div = document.createElement("div");
   div.className = "msg " + cls; div.innerHTML = html;
@@ -354,7 +358,7 @@ $("#chat-form").addEventListener("submit", async e => {
   try {
     const r = await api("/api/chat", { method: "POST", body: JSON.stringify({ question: q }) });
     pending.innerHTML = esc(r.answer) + `<details class="sources"><summary>${r.sources.length} sources ·
-      retrieve ${r.timing_ms.retrieve} ms · generate ${r.timing_ms.generate} ms</summary>${renderHits(r.sources)}</details>`;
+      retrieve ${r.timing_ms.retrieve} ms · generate ${r.timing_ms.generate} ms</summary>${renderQueries(r.queries)}${renderHits(r.sources)}</details>`;
   } catch (err) { pending.innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
 });
 
@@ -518,7 +522,7 @@ $("#debug-form").addEventListener("submit", async e => {
   try {
     const r = await api("/api/admin/retrieve", { method: "POST",
       body: JSON.stringify({ question: $("#debug-q").value, k: Number($("#debug-k").value) }) });
-    out.innerHTML = `<p class="muted">${r.hits.length} hits in ${r.ms} ms</p>` + renderHits(r.hits);
+    out.innerHTML = `<p class="muted">${r.hits.length} hits in ${r.ms} ms</p>` + renderQueries(r.queries) + renderHits(r.hits);
   } catch (err) { out.innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
 });
 

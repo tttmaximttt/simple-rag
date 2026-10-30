@@ -55,6 +55,8 @@ def init():
         if "sha256" not in cols:  # added after the first release
             c.execute("ALTER TABLE documents ADD COLUMN sha256 TEXT")
         c.execute("CREATE INDEX IF NOT EXISTS documents_sha ON documents (sha256)")
+        if "language" not in cols:  # set at ingest, for searching in the documents' languages
+            c.execute("ALTER TABLE documents ADD COLUMN language TEXT")
         # Lets log() trim each partition with an index seek instead of scanning the table.
         c.execute("CREATE INDEX IF NOT EXISTS events_part ON events ((source IS 'auth'), id)")
 

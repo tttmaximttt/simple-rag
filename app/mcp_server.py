@@ -19,11 +19,14 @@ def _hit_id(h):
 
 
 @mcp.tool()
-async def search(query: str, top_k: int = 8) -> dict:
+async def search(query: str, top_k: int = 8, rewrite: bool | None = None) -> dict:
     """Semantic search over the uploaded documents. Returns matching passages with ids
-    that can be passed to `fetch` to read the whole page."""
-    hits = await to_thread.run_sync(rag.retrieve, query, top_k)
-    return {"results": [{"id": _hit_id(h), "title": f"{h['filename']} (page {h['page']})",
+    that can be passed to `fetch` to read the whole page. Documents may be in another language than the
+    query (see `list_documents`); unless `rewrite` is false or the server turned it off, the server also
+    searches with the query reworded and translated into the documents' languages, listed in `queries`."""
+    _, queries, hits = await to_thread.run_sync(rag.search, query, top_k, rewrite)
+    return {"queries": queries,
+            "results": [{"id": _hit_id(h), "title": f"{h['filename']} (page {h['page']})",
                          "text": h["text"], "score": round(float(h["score"]), 4),
                          "url": f"rag://{_hit_id(h)}"} for h in hits]}
 
@@ -58,9 +61,9 @@ async def ask(question: str, top_k: int = 5) -> dict:
 
 @mcp.tool()
 async def list_documents() -> dict:
-    """List uploaded documents with their ingestion status."""
+    """List uploaded documents with their ingestion status and language."""
     docs = await to_thread.run_sync(lambda: db.rows(
-        "SELECT id, filename, pages, chunks, status FROM documents ORDER BY created DESC"))
+        "SELECT id, filename, pages, chunks, status, language FROM documents ORDER BY created DESC"))
     return {"documents": docs}
 
 

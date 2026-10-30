@@ -54,3 +54,26 @@ def _unspace(line: str) -> str:
 def _line_key(line: str) -> str:
     # Page numbers and dates differ from page to page in otherwise identical lines.
     return _DIGITS.sub("#", unicodedata.normalize("NFKC", line).strip())
+
+
+# Words common in one language and rare in the others; enough to tell which language a document is in.
+_STOPWORDS = {
+    "English": "the and of to is with that this you your are for be from",
+    "Spanish": "el los las del por con para una está más también como son",
+    "French": "le les des et est une pour dans du avec sur sont pas vous",
+    "German": "der die das und ist mit den nicht ein eine für auf sie wird",
+    "Italian": "il gli che di per con una sono non della delle nel anche",
+    "Portuguese": "os do da em não uma são com para também pelo pela mais",
+    "Dutch": "het een en van is dat met voor op niet zijn worden deze",
+}
+_STOPWORD_SETS = {lang: set(words.split()) for lang, words in _STOPWORDS.items()}
+
+
+def detect_language(text: str) -> str | None:
+    """The document's language among a few common ones, by counting their frequent words; None if unclear."""
+    words = re.findall(r"[^\W\d_]+", text[:50000].lower())
+    if len(words) < 30:
+        return None
+    hits = {lang: sum(w in stop for w in words) for lang, stop in _STOPWORD_SETS.items()}
+    lang, n = max(hits.items(), key=lambda x: x[1])
+    return lang if n >= 0.03 * len(words) else None

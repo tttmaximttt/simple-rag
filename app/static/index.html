@@ -128,6 +128,9 @@
         <label>Chunk overlap (tokens) <input name="rag.chunk_overlap_tokens" type="number" min="0"></label>
         <label>Top K results <input name="rag.top_k" type="number" min="1" max="50"></label>
       </div>
+      <label class="check"><input type="checkbox" name="rag.query_rewrite"> Rewrite questions into search queries
+        in the documents' languages <span class="muted small">(one extra LLM call per question; finds answers in
+        documents written in another language, or that use other words than the question)</span></label>
       <p class="muted small" id="token-hint"></p>
     </fieldset>
     <button type="submit" class="primary">Save configuration</button> <span class="result" id="save-result"></span>
@@ -199,7 +202,7 @@
 
   <h2>MCP tools</h2>
   <table><tbody>
-    <tr><td><code>search(query, top_k)</code></td><td>Passages that match the query, each with an id and page.</td></tr>
+    <tr><td><code>search(query, top_k)</code></td><td>Passages that match the query, each with an id and page. The server also searches with the query translated into the documents' languages (see Setup → Retrieval).</td></tr>
     <tr><td><code>fetch(id)</code></td><td>The full text of the page a search result came from.</td></tr>
     <tr><td><code>ask(question, top_k)</code></td><td>An answer written by the LLM configured in Setup, with sources.</td></tr>
     <tr><td><code>list_documents()</code></td><td>The uploaded documents and their indexing status.</td></tr>
