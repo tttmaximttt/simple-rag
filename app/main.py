@@ -207,11 +207,32 @@ def test_component(component: str, body: dict | None = None):
     return _check(component, _draft_config(body))
 
 
+@app.post("/api/models/{component}")
+def list_models(component: str, body: dict | None = None):
+    """Models the (possibly unsaved) embeddings or LLM provider offers, for the wizard's model picker."""
+    factory = {"embeddings": embeddings.get, "llm": llm.get}.get(component)
+    if not factory:
+        raise HTTPException(404, "unknown component")
+    try:
+        return {"ok": True, "models": sorted(set(factory(_draft_config(body)).models()))}
+    except Exception as e:
+        return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+
+
 # ---------- documents ----------
 
 @app.get("/api/documents")
 def list_documents():
-    return db.rows("SELECT * FROM documents ORDER BY created DESC")
+    docs = db.rows("SELECT * FROM documents ORDER BY created DESC")
+    queued = {d["id"] for d in docs if d["status"] == "queued"}
+    position = {i: n for n, i in enumerate(dict.fromkeys(i for i in rag.pending() if i in queued), start=1)}
+    prog = rag.progress()
+    for d in docs:
+        if d["id"] in position:
+            d["queue_position"] = position[d["id"]]
+        if d["status"] == "processing" and prog.get("doc_id") == d["id"]:
+            d["progress"] = {k: prog[k] for k in ("stage", "done", "total")}
+    return docs
 
 
 class TooLarge(Exception):
@@ -346,6 +367,15 @@ def reindex(doc_id: str):
     if not db.rows("SELECT id FROM documents WHERE id=?", (doc_id,)):
         raise HTTPException(404)
     rag.enqueue(doc_id)
+    return {"ok": True}
+
+
+@app.post("/api/documents/{doc_id}/cancel")
+def cancel_ingest(doc_id: str):
+    if not db.rows("SELECT id FROM documents WHERE id=?", (doc_id,)):
+        raise HTTPException(404)
+    if not rag.cancel(doc_id):
+        raise HTTPException(409, "Not queued or processing")
     return {"ok": True}
 
 
@@ -538,4 +568,13 @@ def v1_openapi(request: Request):
 # MCP endpoint at /mcp; must come before the static catch-all mount.
 app.router.routes.extend(mcp_http_app.routes)
 
-app.mount("/", StaticFiles(directory=Path(__file__).parent / "static", html=True), name="static")
+class _RevalidatedStatic(StaticFiles):
+    """Make browsers revalidate (cheap 304s via ETag) so an upgrade never runs a stale app.js."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/", _RevalidatedStatic(directory=Path(__file__).parent / "static", html=True), name="static")
