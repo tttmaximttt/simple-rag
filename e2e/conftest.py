@@ -61,6 +61,8 @@ def wizard_settings() -> dict:
     store = {"type": VECTOR_STORE, "collection": f"e2e_{EMBEDDINGS}"}
     if VECTOR_STORE == "qdrant":
         store["qdrant"] = {"url": os.environ.get("E2E_QDRANT_URL", "http://qdrant:6333")}
+    if VECTOR_STORE == "pgvector" and os.environ.get("E2E_PGVECTOR_DSN"):  # e.g. a local Postgres with --local
+        store["pgvector"] = {"dsn": os.environ["E2E_PGVECTOR_DSN"]}
     return {"vector_store": store, "embeddings": emb, "llm": llm}
 
 

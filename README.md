@@ -284,7 +284,10 @@ app/static/          Web UI (no build step)
 python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 DATA_DIR=./data uvicorn app.main:app --reload --port 8080
+python -m pytest -q
 ```
+
+The vector store contract tests (`tests/test_stores.py`) run against embedded Chroma and in-memory Qdrant by default. Point them at real servers to cover those too: `PGVECTOR_TEST_DSN=postgresql://... QDRANT_TEST_URL=http://localhost:6333 python -m pytest tests/test_stores.py`. The pgvector `halfvec` test (models over 2000 dimensions) needs pgvector 0.7 or later.
 
 ### End-to-end tests
 
@@ -305,6 +308,8 @@ To test with real models, pick them with env vars (the tests then check the same
 E2E_EMBEDDINGS=openai E2E_LLM=anthropic OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... e2e/run.sh
 E2E_EMBEDDINGS=local E2E_LLM=openai OPENAI_API_KEY=sk-... e2e/run.sh   # fastembed, downloads the model
 E2E_VECTOR_STORE=qdrant e2e/run.sh                                      # or chroma; default pgvector
+E2E_VECTOR_STORE=qdrant E2E_QDRANT_URL=http://127.0.0.1:6333 e2e/run.sh --local            # a Qdrant server on this machine
+E2E_VECTOR_STORE=pgvector E2E_PGVECTOR_DSN=postgresql://... e2e/run.sh --local             # a Postgres with pgvector
 ```
 
 Other settings (`E2E_PORT`, `E2E_BUILD=0` to reuse the built image, `E2E_INGEST_TIMEOUT`, `E2E_CHROMIUM` for an existing Chromium binary) are described in `e2e/run.sh` and `e2e/conftest.py`.

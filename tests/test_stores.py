@@ -36,7 +36,18 @@ def pgvector():
         c.execute(f"DROP TABLE IF EXISTS {store.table}")
 
 
-@pytest.fixture(params=["chroma", "qdrant", "pgvector"])
+@pytest.fixture
+def qdrant_server():
+    url = os.environ.get("QDRANT_TEST_URL")
+    if not url:
+        pytest.skip("QDRANT_TEST_URL not set")
+    store = qdrant_store.QdrantStore(url, None, "t_" + uuid.uuid4().hex[:8])
+    yield store
+    if store.client.collection_exists(store.collection):
+        store.client.delete_collection(store.collection)
+
+
+@pytest.fixture(params=["chroma", "qdrant", "qdrant_server", "pgvector"])
 def store(request):
     return request.getfixturevalue(request.param)
 

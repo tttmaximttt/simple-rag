@@ -42,7 +42,7 @@ services:
 
   # Optional: docker compose --profile qdrant up
   qdrant:
-    image: qdrant/qdrant:v1.12.5
+    image: qdrant/qdrant:v1.20.0  # matches qdrant-client in requirements.txt
     profiles: ["qdrant"]
     volumes:
       - qdrant-data:/qdrant/storage
