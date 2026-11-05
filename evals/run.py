@@ -177,6 +177,7 @@ def run(args, overrides, settings, work: Path) -> dict:
             "chunk_tokens": cfg["rag"]["chunk_tokens"], "chunk_overlap_tokens": cfg["rag"]["chunk_overlap_tokens"],
             "query_rewrite": bool(cfg["rag"]["query_rewrite"]), "search_mode": cfg["rag"]["search_mode"], "k": K,
             "reranker": _reranker_name(cfg),
+            "hardware": _hardware(),
         },
         "dataset": {"questions": len(questions), "documents": sorted({q["doc"] for q in everything}),
                     "ingest_seconds": round(ingest_s, 1)},
@@ -244,6 +245,33 @@ def _drop(store):
         print(f"warning: could not drop the eval collection: {e}", file=sys.stderr)
 
 
+def _hardware() -> dict:
+    """Where the latency was measured: the CPU, and which ONNX Runtime devices the local models could use."""
+    import platform
+    cpu = platform.processor() or platform.machine()
+    try:
+        if sys.platform == "darwin":
+            cpu = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True,
+                                 check=True).stdout.strip() or cpu
+        elif sys.platform.startswith("linux"):
+            cpu = next((line.split(":", 1)[1].strip() for line in open("/proc/cpuinfo")
+                        if line.startswith("model name")), cpu)
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    try:
+        import onnxruntime
+        providers = onnxruntime.get_available_providers()
+    except ImportError:
+        providers = []
+    try:
+        gpu = subprocess.run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"], capture_output=True,
+                             text=True, check=True, timeout=10).stdout.strip().replace("\n", ", ") or None
+    except (OSError, subprocess.SubprocessError):
+        gpu = None
+    return {"os": platform.platform(terse=True), "cpu": cpu, "cores": os.cpu_count(), "gpu": gpu,
+            "onnx_providers": providers}
+
+
 def _reranker_name(cfg) -> str:
     r = cfg["reranker"]
     p = r["provider"]
@@ -279,6 +307,9 @@ def markdown(r: dict) -> str:
         f"chunks {s['chunk_tokens']}/{s['chunk_overlap_tokens']} tokens · {s.get('search_mode', 'vector')} search · "
         f"rewrite {'on' if s['query_rewrite'] else 'off'} · reranker {s.get('reranker', 'off')} · "
         f"{r['dataset']['questions']} questions over {len(r['dataset']['documents'])} PDFs", "",
+        *([f"Measured on {h['cpu']} ({h['cores']} cores, {h['os']})" + (f", GPU {h['gpu']}" if h.get("gpu") else "")
+           + "; ONNX Runtime devices: "
+           f"{', '.join(h['onnx_providers']) or 'none'}", ""] if (h := s.get("hardware")) else []),
         "| Slice | Questions | Recall@1 | Recall@5 | Recall@10 | MRR@10 | p50 | p95 | LLM calls/query |",
         "|---|---|---|---|---|---|---|---|---|",
     ]

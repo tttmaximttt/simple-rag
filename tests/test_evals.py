@@ -158,3 +158,8 @@ def test_counting_llm_treats_an_empty_reply_as_a_failure():
     with pytest.raises(SystemExit, match="empty reply"):
         run.CountingLLM.check("q-2")
     run.CountingLLM.reset()
+
+
+def test_results_record_the_hardware():
+    h = run._hardware()
+    assert set(h) == {"os", "cpu", "cores", "gpu", "onnx_providers"} and h["cpu"] and h["cores"] >= 1
