@@ -10,6 +10,17 @@ from . import dimension_mismatch
 MAX_IDENT = 63  # Postgres truncates identifiers at 63 bytes
 INDEX_SUFFIX = "_hnsw"
 HNSW_VECTOR_MAX = 2000  # vector HNSW limit; larger dims use halfvec (limit 4000)
+TSV_SUFFIX = "_tsv"  # shorter than INDEX_SUFFIX, so it fits wherever that does
+
+# Postgres text-search configurations for the languages pdftext.detect_language reports. "simple" only
+# lowercases, for a document whose language wasn't detected.
+TS_CONFIGS = {"English": "english", "Spanish": "spanish", "French": "french", "German": "german",
+              "Italian": "italian", "Portuguese": "portuguese", "Dutch": "dutch"}
+
+
+def ts_config(language):
+    """The text-search configuration for a chunk of a document in `language` (None when not detected)."""
+    return TS_CONFIGS.get(language or "", "simple")
 
 
 def table_name(collection):
@@ -62,20 +73,34 @@ class PgVectorStore:
             col, ops = (f"halfvec({dim})", "halfvec_cosine_ops") if half else (f"vector({dim})", "vector_cosine_ops")
             c.execute(f"""CREATE TABLE IF NOT EXISTS {self.table} (
                 id TEXT PRIMARY KEY, doc_id TEXT, filename TEXT, page INT, chunk INT,
-                text TEXT, embedding {col})""")
+                text TEXT, embedding {col}, ts_config TEXT, tsv tsvector)""")
+            self._migrate(c)
             c.execute(f"CREATE INDEX IF NOT EXISTS {self.table}_doc ON {self.table} (doc_id)")
             c.execute(f"CREATE INDEX IF NOT EXISTS {self.table}{INDEX_SUFFIX} ON {self.table} "
                       f"USING hnsw (embedding {ops})")
+
+    def _has_keywords(self, c):
+        return c.execute("SELECT 1 FROM pg_attribute WHERE attrelid = %s::regclass AND attname = 'tsv' "
+                         "AND NOT attisdropped", (self.table,)).fetchone() is not None
+
+    def _migrate(self, c):
+        """Add the keyword columns and index to a table made before hybrid search. Its rows have no keyword
+        data (tsv is NULL) until they're re-indexed; keyword_missing() counts them."""
+        if not self._has_keywords(c):
+            c.execute(f"ALTER TABLE {self.table} ADD COLUMN IF NOT EXISTS ts_config TEXT, "
+                      "ADD COLUMN IF NOT EXISTS tsv tsvector")
+        c.execute(f"CREATE INDEX IF NOT EXISTS {self.table}{TSV_SUFFIX} ON {self.table} USING gin (tsv)")
 
     def upsert(self, items):
         import numpy as np
         with self._conn() as c, c.cursor() as cur:
             cur.executemany(
-                f"""INSERT INTO {self.table} (id, doc_id, filename, page, chunk, text, embedding)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)
-                    ON CONFLICT (id) DO UPDATE SET text = EXCLUDED.text, embedding = EXCLUDED.embedding""",
-                [(i, p["doc_id"], p["filename"], p["page"], p["chunk"], p["text"], np.array(v, dtype=np.float32))
-                 for i, v, p in items])
+                f"""INSERT INTO {self.table} (id, doc_id, filename, page, chunk, text, embedding, ts_config, tsv)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s, to_tsvector(%s::regconfig, %s))
+                    ON CONFLICT (id) DO UPDATE SET text = EXCLUDED.text, embedding = EXCLUDED.embedding,
+                        ts_config = EXCLUDED.ts_config, tsv = EXCLUDED.tsv""",
+                [(i, p["doc_id"], p["filename"], p["page"], p["chunk"], p["text"], np.array(v, dtype=np.float32),
+                  cfg, cfg, p["text"]) for i, v, p in items for cfg in [ts_config(p.get("language"))]])
 
     def search(self, vector, k):
         import numpy as np
@@ -92,6 +117,34 @@ class PgVectorStore:
                     (v, v, k)).fetchall()
         keys = ("doc_id", "filename", "page", "chunk", "text", "score")
         return [dict(zip(keys, r)) for r in rows]
+
+    def keyword_search(self, query, k):
+        """Full-text search: the query is parsed with each text-search configuration and matched against the
+        chunks stored with that configuration, any of its words counting (OR), ranked by ts_rank_cd."""
+        with self._conn() as c:
+            if not self._exists(c):
+                return []
+            if not self._has_keywords(c):
+                self._migrate(c)
+            rows = c.execute(
+                f"""WITH q AS (
+                        SELECT cfg, replace(plainto_tsquery(cfg::regconfig, %s)::text, ' & ', ' | ') AS qt
+                        FROM unnest(%s::text[]) AS cfg)
+                    SELECT t.doc_id, t.filename, t.page, t.chunk, t.text, ts_rank_cd(t.tsv, q.qt::tsquery) AS score
+                    FROM {self.table} t JOIN q ON t.ts_config = q.cfg
+                    WHERE q.qt <> '' AND t.tsv @@ q.qt::tsquery
+                    ORDER BY score DESC, t.id LIMIT %s""", (query, [*TS_CONFIGS.values(), "simple"], k)).fetchall()
+        keys = ("doc_id", "filename", "page", "chunk", "text", "score")
+        return [dict(zip(keys, r)) for r in rows]
+
+    def keyword_missing(self):
+        """Chunks stored before hybrid search, which keyword search can't find until they're re-indexed."""
+        with self._conn() as c:
+            if not self._exists(c):
+                return 0
+            if not self._has_keywords(c):
+                return c.execute(f"SELECT COUNT(*) FROM {self.table}").fetchone()[0]
+            return c.execute(f"SELECT COUNT(*) FROM {self.table} WHERE tsv IS NULL").fetchone()[0]
 
     def delete_doc(self, doc_id):
         with self._conn() as c:

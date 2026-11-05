@@ -355,8 +355,9 @@ function addMsg(cls, html) {
   $("#messages").append(div); div.scrollIntoView({ behavior: "smooth" });
   return div;
 }
+const foundBy = h => h.found_by?.length ? ` · found by ${h.found_by.map(esc).join(" + ")}` : "";
 const renderHits = hits => hits.map((h, i) => `<div class="hit"><strong>[${i + 1}] ${esc(h.filename)}, page ${h.page}</strong>
-  <span class="muted">score ${Number(h.score).toFixed(3)}</span><div>${esc(h.text)}</div></div>`).join("");
+  <span class="muted">${!h.found_by || h.found_by.includes("vector") ? `score ${Number(h.score).toFixed(3)}` : "keyword match"}${foundBy(h)}</span><div>${esc(h.text)}</div></div>`).join("");
 $("#chat-form").addEventListener("submit", async e => {
   e.preventDefault();
   const q = $("#question").value.trim(); if (!q) return;
@@ -529,8 +530,10 @@ $("#debug-form").addEventListener("submit", async e => {
   const out = $("#debug-hits"); out.innerHTML = "<span class='muted'>Searching…</span>";
   try {
     const r = await api("/api/admin/retrieve", { method: "POST",
-      body: JSON.stringify({ question: $("#debug-q").value, k: Number($("#debug-k").value) }) });
-    out.innerHTML = `<p class="muted">${r.hits.length} hits in ${r.ms} ms</p>` + renderQueries(r.queries) + renderHits(r.hits);
+      body: JSON.stringify({ question: $("#debug-q").value, k: Number($("#debug-k").value),
+                             mode: $("#debug-mode").value || null }) });
+    out.innerHTML = `<p class="muted">${r.hits.length} hits in ${r.ms} ms (${esc(r.mode)} search)</p>` +
+      renderQueries(r.queries) + renderHits(r.hits);
   } catch (err) { out.innerHTML = `<span class="bad">${esc(err.message)}</span>`; }
 });
 

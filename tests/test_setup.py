@@ -305,3 +305,43 @@ def test_lines_on_only_two_pages_of_a_small_document_are_kept():
                                   "Gear  P R N D"])
 def test_table_rows_are_not_unspaced(line):
     assert pdftext._unspace(line) == line
+
+
+# ---------- search mode ----------
+
+def test_search_mode_round_trips(logged_in, saved, monkeypatch):
+    monkeypatch.setattr(main, "_keyword_missing", lambda cfg: 0)
+    assert logged_in.get("/api/config").json()["rag"]["search_mode"] == "vector"  # the default
+    r = logged_in.put("/api/config", json={"rag": {"search_mode": "hybrid"}})
+    assert r.status_code == 200 and r.json()["rag"]["search_mode"] == "hybrid"
+    assert logged_in.get("/api/config").json()["rag"]["search_mode"] == "hybrid"
+    assert config.load()["rag"]["search_mode"] == "hybrid" and not saved
+
+
+def test_unknown_search_mode_is_not_saved(logged_in, saved):
+    r = logged_in.put("/api/config", json={"rag": {"search_mode": "fuzzy"}})
+    assert r.status_code == 400 and "Unknown search mode" in r.json()["detail"]
+    assert config.load()["rag"]["search_mode"] == "vector"
+
+
+def test_hybrid_asks_to_reindex_chunks_without_keywords(logged_in, saved, monkeypatch):
+    monkeypatch.setattr(main, "_keyword_missing", lambda cfg: 7)
+    r = logged_in.put("/api/config", json={"rag": {"search_mode": "hybrid"}})
+    assert r.status_code == 409
+    d = r.json()["detail"]
+    assert d["code"] == "reindex_required" and d["collection"] is None and "7 stored chunks" in d["message"]
+    assert config.load()["rag"]["search_mode"] == "vector"
+    r = logged_in.put("/api/config", json={"rag": {"search_mode": "hybrid"}, "reindex": True})
+    assert r.status_code == 200 and len(saved) == 1 and config.load()["rag"]["search_mode"] == "hybrid"
+
+
+@pytest.mark.parametrize("body", [{"mode": "hybrid"}, {"mode": None}])
+def test_debugger_and_v1_retrieve_take_a_mode(logged_in, saved, monkeypatch, body):
+    seen = []
+    monkeypatch.setattr(rag, "search", lambda q, k=None, rewrite=None, mode=None: seen.append(mode) or (
+        None, [], [{"doc_id": "d", "page": 1, "found_by": ["keyword"]}]))
+    r = logged_in.post("/api/admin/retrieve", json={"question": "q", **body})
+    assert r.status_code == 200 and r.json()["mode"] == (body["mode"] or "vector")
+    assert r.json()["hits"][0]["found_by"] == ["keyword"]
+    assert seen[-1] == (body["mode"] or "vector")
+    assert logged_in.post("/api/admin/retrieve", json={"question": "q", "mode": "fuzzy"}).status_code == 422

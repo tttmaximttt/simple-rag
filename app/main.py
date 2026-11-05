@@ -257,7 +257,19 @@ def _draft_config(body: dict | None) -> dict:
     for section, key in (("vector_store", "type"), ("embeddings", "provider"), ("llm", "provider")):
         if not isinstance(config.DEFAULTS[section].get(cfg[section][key]), dict):
             raise HTTPException(400, f"Unknown {section.replace('_', ' ')} {key}: {cfg[section][key]!r}")
+    if cfg["rag"].get("search_mode") not in rag.SEARCH_MODES:
+        raise HTTPException(400, f"Unknown search mode {cfg['rag'].get('search_mode')!r}: "
+                                 f"use one of {', '.join(rag.SEARCH_MODES)}")
     return cfg
+
+
+def _keyword_missing(cfg) -> int:
+    """Stored chunks that hybrid search's keyword half can't find yet (pgvector tables made before it).
+    0 when the store can't be reached: the save shouldn't fail on that, and search will say so."""
+    try:
+        return stores.get(cfg).keyword_missing()
+    except Exception:  # noqa: BLE001
+        return 0
 
 
 @app.post("/api/tokenizer/limits")
@@ -322,6 +334,12 @@ def put_config(body: dict):
                             f"Save into a new collection and re-index the {indexed} documents."
                             if mixing else f"The {indexed} indexed documents were stored with the old settings, "
                             "so search won't find them until they're re-indexed.")})
+    elif (old["configured"] and indexed and reindex is None and new["rag"]["search_mode"] == "hybrid"
+          and old["rag"].get("search_mode") != "hybrid" and (missing := _keyword_missing(new))):
+        raise HTTPException(409, {
+            "code": "reindex_required", "documents": indexed, "collection": None,
+            "message": f"{missing} stored chunks have no keyword index yet, so hybrid search finds them by meaning "
+                       f"only until the {indexed} documents are re-indexed."})
     new["configured"] = True
     config.save(new)
     db.log("info", "setup", f"config saved: store={new['vector_store']['type']} "
@@ -663,6 +681,13 @@ class Question(BaseModel):
     k: int | None = Field(None, ge=1, le=rag.MAX_TOP_K)
 
 
+SearchMode = Literal["vector", "hybrid"]
+
+
+class DebugQuestion(Question):
+    mode: SearchMode | None = None
+
+
 @app.post("/api/chat")
 def chat(q: Question):
     try:
@@ -674,14 +699,17 @@ def chat(q: Question):
 # ---------- admin / diagnostics ----------
 
 @app.post("/api/admin/retrieve")
-def debug_retrieve(q: Question):
-    """Retrieval as Chat and the API do it, including the rewritten queries when that's on."""
+def debug_retrieve(q: DebugQuestion):
+    """Retrieval as Chat and the API do it, including the rewritten queries when that's on. Each hit's found_by
+    says whether vector search, keyword search or both found it; mode overrides the Setup option."""
     t0 = time.time()
     try:
-        _, queries, hits = rag.search(q.question, q.k)
+        cfg = config.load()
+        mode = rag.search_mode(cfg, q.mode)
+        _, queries, hits = rag.search(q.question, q.k, mode=mode)
     except Exception as e:
         return JSONResponse({"error": f"{type(e).__name__}: {e}"}, status_code=502)
-    return {"ms": round((time.time() - t0) * 1000), "queries": queries, "hits": hits}
+    return {"ms": round((time.time() - t0) * 1000), "mode": mode, "queries": queries, "hits": hits}
 
 
 @app.get("/api/admin/status")
@@ -780,6 +808,8 @@ class RetrieveIn(BaseModel):
     top_k: int | None = Field(None, ge=1, le=rag.MAX_TOP_K)
     rewrite: bool | None = Field(None, description="Also search with the query reworded and translated into the "
                                  "documents' languages by the server's LLM. Defaults to the server's setting.")
+    mode: SearchMode | None = Field(None, description="\"vector\" (by meaning) or \"hybrid\" (by meaning and by "
+                                    "keyword, for codes, numbers and names). Defaults to the server's setting.")
 
 
 @app.post("/v1/query", operation_id="askDocuments")
@@ -795,9 +825,10 @@ def v1_query(q: QueryIn):
 
 @app.post("/v1/retrieve", operation_id="searchDocuments")
 def v1_retrieve(q: RetrieveIn):
-    """Retrieval only: the top matching pages, for use with your own LLM, and the extra queries searched."""
+    """Retrieval only: the top matching pages, for use with your own LLM, and the extra queries searched.
+    Each result's found_by lists the searches that found it: "vector", "keyword" or both."""
     try:
-        _, queries, hits = rag.search(q.query, q.top_k, q.rewrite)
+        _, queries, hits = rag.search(q.query, q.top_k, q.rewrite, q.mode)
         return {"results": hits, "queries": queries}
     except Exception as e:
         db.log("error", "api", f"retrieve failed: {type(e).__name__}: {e}")

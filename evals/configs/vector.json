@@ -1,4 +1,4 @@
 {
   "description": "Current vector search, no query rewrite.",
-  "rag": {"query_rewrite": false}
+  "rag": {"query_rewrite": false, "search_mode": "vector"}
 }

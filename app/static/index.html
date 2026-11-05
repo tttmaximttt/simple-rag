@@ -128,6 +128,11 @@
         <label>Chunk overlap (tokens) <input name="rag.chunk_overlap_tokens" type="number" min="0"></label>
         <label>Top K results <input name="rag.top_k" type="number" min="1" max="50"></label>
       </div>
+      <label>Search mode <select name="rag.search_mode">
+        <option value="vector">vector: by meaning</option>
+        <option value="hybrid">hybrid: by meaning and by keyword</option>
+      </select> <span class="muted small">(hybrid also finds exact codes, part numbers and names; switching to it
+        may ask to re-index documents stored before it existed)</span></label>
       <label class="check"><input type="checkbox" name="rag.query_rewrite"> Rewrite questions into search queries
         in the documents' languages <span class="muted small">(one extra LLM call per question; finds answers in
         documents written in another language, or that use other words than the question)</span></label>
@@ -204,7 +209,7 @@
 
   <h2>MCP tools</h2>
   <table><tbody>
-    <tr><td><code>search(query, top_k)</code></td><td>Passages that match the query, each with an id and page. The server also searches with the query translated into the documents' languages (see Setup → Retrieval).</td></tr>
+    <tr><td><code>search(query, top_k)</code></td><td>Passages that match the query, each with an id and page. The server also searches with the query translated into the documents' languages, and by keyword in hybrid mode (see Setup → Retrieval).</td></tr>
     <tr><td><code>fetch(id)</code></td><td>The full text of the page a search result came from.</td></tr>
     <tr><td><code>ask(question, top_k)</code></td><td>An answer written by the LLM configured in Setup, with sources.</td></tr>
     <tr><td><code>list_documents()</code></td><td>The uploaded documents and their indexing status.</td></tr>
@@ -237,6 +242,8 @@
   <form id="debug-form" class="row">
     <input id="debug-q" placeholder="Query to test retrieval">
     <input id="debug-k" type="number" value="5" min="1" max="50" class="narrow">
+    <select id="debug-mode"><option value="">Setup's search mode</option><option value="vector">vector</option>
+      <option value="hybrid">hybrid</option></select>
     <button>Search</button>
   </form>
   <div id="debug-hits"></div>
@@ -249,6 +256,6 @@
   <pre id="events"></pre>
 </section>
 </main>
-<script src="app.js?v=2"></script>
+<script src="app.js?v=3"></script>
 </body>
 </html>
