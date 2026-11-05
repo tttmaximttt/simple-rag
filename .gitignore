@@ -9,3 +9,4 @@ import/*
 .pytest_cache
 AGENTS.md
 e2e/.work/
+evals/.cache/

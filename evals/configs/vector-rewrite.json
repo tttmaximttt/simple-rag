@@ -1,0 +1,4 @@
+{
+  "description": "Current vector search with the LLM query rewrite (one LLM call per question).",
+  "rag": {"query_rewrite": true}
+}
