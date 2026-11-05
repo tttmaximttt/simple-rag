@@ -130,7 +130,7 @@ def write(result: dict, out: Path, config: str) -> Path:
 def run(args, overrides, settings, work: Path) -> dict:
     from app import config, db, rag, stores
     from app.providers import llm
-    from . import dataset, metrics
+    from . import dataset, metrics, stats
 
     everything = dataset.load()
     questions = everything[:args.limit] if args.limit is not None else everything
@@ -160,7 +160,8 @@ def run(args, overrides, settings, work: Path) -> dict:
             ms = (time.perf_counter() - t0) * 1000
             CountingLLM.check(q["id"])
             ranking = [(h["filename"], h["page"]) for h in hits]
-            rows.append({"id": q["id"], "tags": q.get("tags", []), "rank": metrics.first_hit(ranking, q["doc"], q["pages"]),
+            rank = metrics.first_hit(ranking, q["doc"], q["pages"])
+            rows.append({"id": q["id"], "tags": q.get("tags", []), "rank": rank, **stats.per_question(rank),
                          "latency_ms": round(ms, 1), "llm_calls": CountingLLM.calls, "queries": queries,
                          "top": [f"{d} p{p}" for d, p in ranking[:5]]})
         answers = _answers(questions, cfg, rag, llm, dataset, metrics) if args.answers else None
@@ -188,6 +189,7 @@ def run(args, overrides, settings, work: Path) -> dict:
             "hardware": _hardware(),
         },
         "dataset": {"questions": len(questions), "documents": sorted({q["doc"] for q in everything}),
+                    "sha256": dataset.fingerprint(),
                     "ingest_seconds": round(ingest_s, 1)},
         "retrieval": metrics.summarize(rows),
         "by_tag": by_tag,
@@ -306,6 +308,15 @@ def _ms(x):
     return "n/a" if x is None else f"{x:.0f} ms"
 
 
+def _ci(m: dict, metric: str) -> str:
+    """The metric with its 95% interval when the result has one: 62.1% [50.0–73.5], 0.763 [0.671–0.851]."""
+    mrr = metric.startswith("mrr")
+    fmt = (lambda x: f"{x:.3f}") if mrr else (lambda x: f"{x * 100:.1f}")
+    value = fmt(m[metric]) if mrr else _pct(m[metric])
+    ci = (m.get("ci95") or {}).get(metric)
+    return f"{value} [{fmt(ci[0])}–{fmt(ci[1])}]" if ci else value
+
+
 def markdown(r: dict) -> str:
     s = r["setup"]
     lines = [
@@ -322,8 +333,8 @@ def markdown(r: dict) -> str:
         "|---|---|---|---|---|---|---|---|---|",
     ]
     for name, m in [("all", r["retrieval"]), *r["by_tag"].items()]:
-        lines.append(f"| {name} | {m['questions']} | {_pct(m['recall@1'])} | {_pct(m['recall@5'])} | {_pct(m['recall@10'])} "
-                     f"| {m['mrr@10']:.3f} | {_ms(m['latency_p50_ms'])} | {_ms(m['latency_p95_ms'])} | {m['llm_calls_per_query']} |")
+        lines.append(f"| {name} | {m['questions']} | {_ci(m, 'recall@1')} | {_ci(m, 'recall@5')} | {_pct(m['recall@10'])} "
+                     f"| {_ci(m, 'mrr@10')} | {_ms(m['latency_p50_ms'])} | {_ms(m['latency_p95_ms'])} | {m['llm_calls_per_query']} |")
     if r.get("answers"):
         a = r["answers"]
         lines += ["", "| Answers | Faithfulness | Claims | Judge failures | Citations/answer | Valid citations "

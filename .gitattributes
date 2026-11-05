@@ -1,0 +1,2 @@
+# PDFs are binary: converting their line endings (core.autocrlf on Windows) corrupts their byte offsets.
+*.pdf binary
