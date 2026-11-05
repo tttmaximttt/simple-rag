@@ -5,20 +5,37 @@ from functools import lru_cache
 from . import check, post_with_retry
 
 
+# ONNX Runtime providers per device. Always passed explicitly: fastembed's default tries CUDA whenever its libraries
+# load, which would move a CPU measurement onto the GPU depending on PATH.
+DEVICES = {"cpu": ["CPUExecutionProvider"], "cuda": ["CUDAExecutionProvider"]}
+
+
 @lru_cache(maxsize=1)
-def _cross_encoder(model):
+def _cross_encoder(model, device):
     from fastembed.rerank.cross_encoder import TextCrossEncoder
-    return TextCrossEncoder(model_name=model)
+    if device == "cuda":
+        import onnxruntime
+        if hasattr(onnxruntime, "preload_dlls"):
+            onnxruntime.preload_dlls()  # the CUDA and cuDNN libraries from the nvidia-* wheels, which aren't on PATH
+    encoder = TextCrossEncoder(model_name=model, providers=DEVICES[device])
+    used = encoder.model.model.get_providers()
+    if used[0] != DEVICES[device][0]:  # ONNX Runtime falls back to CPU with only a warning
+        raise RuntimeError(f"The reranker asked for {device} but ONNX Runtime is using {used[0]}: "
+                           "check that onnxruntime-gpu and its CUDA and cuDNN libraries are installed")
+    return encoder
 
 
 class LocalReranker:
-    """Runs on CPU via fastembed (ONNX), like the local embeddings. Downloads the model on first use."""
+    """Runs via fastembed (ONNX) on the CPU, or on an NVIDIA GPU with device "cuda" and onnxruntime-gpu. Downloads
+    the model on first use."""
 
-    def __init__(self, model):
-        self.model = model
+    def __init__(self, model, device="cpu"):
+        if device not in DEVICES:
+            raise ValueError(f"Unknown reranker device {device!r}: use one of {', '.join(DEVICES)}")
+        self.model, self.device = model, device
 
     def rerank(self, query, texts):
-        return [float(s) for s in _cross_encoder(self.model).rerank(query, list(texts))]
+        return [float(s) for s in _cross_encoder(self.model, self.device).rerank(query, list(texts))]
 
     def models(self):
         from fastembed.rerank.cross_encoder import TextCrossEncoder

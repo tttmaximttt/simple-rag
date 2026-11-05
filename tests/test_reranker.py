@@ -37,6 +37,42 @@ def test_off_is_the_default():
     assert reranker.get(config.DEFAULTS) is None
 
 
+@pytest.fixture
+def fake_encoder(monkeypatch):
+    """A TextCrossEncoder whose ONNX session reports the providers in `used`, as ONNX Runtime would after a fallback."""
+    from fastembed.rerank import cross_encoder
+    made, used = [], ["CPUExecutionProvider"]
+
+    class Encoder:
+        def __init__(self, model_name, providers):
+            made.append(providers)
+            self.model = type("M", (), {"model": type("S", (), {"get_providers": lambda s: used})()})()
+
+        def rerank(self, query, texts):
+            return [1.0 for _ in texts]
+
+    monkeypatch.setattr(cross_encoder, "TextCrossEncoder", Encoder)
+    reranker._cross_encoder.cache_clear()
+    yield made, used
+    reranker._cross_encoder.cache_clear()
+
+
+def test_local_reranker_asks_for_its_device_explicitly(fake_encoder):
+    made, used = fake_encoder
+    assert reranker.get(config.DEFAULTS | {"reranker": {"provider": "local", "local": {"model": "m"}}}).device == "cpu"
+    assert reranker.LocalReranker("m").rerank("q", ["a"]) == [1.0]
+    used[:] = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+    reranker.LocalReranker("m", "cuda").rerank("q", ["a"])
+    assert made == [["CPUExecutionProvider"], ["CUDAExecutionProvider"]]
+    with pytest.raises(ValueError, match="Unknown reranker device"):
+        reranker.LocalReranker("m", "gpu")
+
+
+def test_local_reranker_refuses_a_silent_cpu_fallback(fake_encoder):
+    with pytest.raises(RuntimeError, match="asked for cuda but ONNX Runtime is using CPUExecutionProvider"):
+        reranker.LocalReranker("m", "cuda").rerank("q", ["a"])
+
+
 # ---------- in retrieval ----------
 
 class Emb:
@@ -114,6 +150,7 @@ def saved(tmp_path, monkeypatch):
     ({"reranker": {"top_n": 0}}, "top N must be a whole number from 1 to 200"),
     ({"reranker": {"top_n": 500}}, "top N"),
     ({"reranker": {"top_n": "30"}}, "top N"),
+    ({"reranker": {"local": {"device": "tpu"}}}, "Unknown reranker device 'tpu'"),
 ])
 def test_bad_reranker_settings_are_refused(logged_in, saved, body, error):
     r = logged_in.put("/api/config", json=body)
