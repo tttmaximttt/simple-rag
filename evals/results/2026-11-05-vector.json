@@ -1,0 +1,1144 @@
+{
+  "date": "2026-11-05",
+  "config": "vector",
+  "description": "Current vector search, no query rewrite.",
+  "commit": "6b6b97a",
+  "setup": {
+    "vector_store": "chroma",
+    "embeddings": "local:BAAI/bge-small-en-v1.5",
+    "llm": "anthropic:claude-sonnet-5-5",
+    "chunk_tokens": 400,
+    "chunk_overlap_tokens": 60,
+    "query_rewrite": false,
+    "k": 10
+  },
+  "dataset": {
+    "questions": 66,
+    "documents": [
+      "mdn-http-es.pdf",
+      "nist-sp800-63b.pdf",
+      "pep8-style-guide.pdf",
+      "raspberry-pi-hardware.pdf"
+    ],
+    "ingest_seconds": 40.6
+  },
+  "retrieval": {
+    "questions": 66,
+    "recall@1": 0.5152,
+    "recall@5": 0.8788,
+    "recall@10": 0.9394,
+    "mrr@10": 0.6916,
+    "latency_p50_ms": 35.3,
+    "latency_p95_ms": 45.9,
+    "llm_calls_per_query": 0.0
+  },
+  "by_tag": {
+    "cross-language": {
+      "questions": 19,
+      "recall@1": 0.4737,
+      "recall@5": 0.7895,
+      "recall@10": 0.8421,
+      "mrr@10": 0.6391,
+      "latency_p50_ms": 34.2,
+      "latency_p95_ms": 36.6,
+      "llm_calls_per_query": 0.0
+    },
+    "exact": {
+      "questions": 27,
+      "recall@1": 0.4444,
+      "recall@5": 0.8889,
+      "recall@10": 0.9259,
+      "mrr@10": 0.6642,
+      "latency_p50_ms": 35.7,
+      "latency_p95_ms": 45.0,
+      "llm_calls_per_query": 0.0
+    },
+    "untagged": {
+      "questions": 28,
+      "recall@1": 0.5714,
+      "recall@5": 0.9286,
+      "recall@10": 1.0,
+      "mrr@10": 0.7345,
+      "latency_p50_ms": 36.5,
+      "latency_p95_ms": 46.9,
+      "llm_calls_per_query": 0.0
+    }
+  },
+  "answers": null,
+  "questions": [
+    {
+      "id": "rpi-01",
+      "tags": [
+        "exact"
+      ],
+      "rank": 10,
+      "latency_ms": 46.7,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p6",
+        "raspberry-pi-hardware.pdf p10",
+        "raspberry-pi-hardware.pdf p8",
+        "raspberry-pi-hardware.pdf p4",
+        "raspberry-pi-hardware.pdf p5"
+      ]
+    },
+    {
+      "id": "rpi-02",
+      "tags": [
+        "exact"
+      ],
+      "rank": null,
+      "latency_ms": 40.0,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p6",
+        "raspberry-pi-hardware.pdf p9",
+        "raspberry-pi-hardware.pdf p10",
+        "raspberry-pi-hardware.pdf p4",
+        "raspberry-pi-hardware.pdf p5"
+      ]
+    },
+    {
+      "id": "rpi-03",
+      "tags": [
+        "exact"
+      ],
+      "rank": 1,
+      "latency_ms": 56.2,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p10",
+        "raspberry-pi-hardware.pdf p11",
+        "raspberry-pi-hardware.pdf p5",
+        "raspberry-pi-hardware.pdf p6",
+        "nist-sp800-63b.pdf p13"
+      ]
+    },
+    {
+      "id": "rpi-04",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 52.0,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p3",
+        "raspberry-pi-hardware.pdf p16",
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p14",
+        "raspberry-pi-hardware.pdf p4"
+      ]
+    },
+    {
+      "id": "rpi-05",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 48.8,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p1",
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p3",
+        "raspberry-pi-hardware.pdf p13",
+        "raspberry-pi-hardware.pdf p12"
+      ]
+    },
+    {
+      "id": "rpi-06",
+      "tags": [
+        "exact"
+      ],
+      "rank": 1,
+      "latency_ms": 38.3,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p3",
+        "raspberry-pi-hardware.pdf p4",
+        "raspberry-pi-hardware.pdf p13",
+        "raspberry-pi-hardware.pdf p15",
+        "raspberry-pi-hardware.pdf p1"
+      ]
+    },
+    {
+      "id": "rpi-07",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 38.4,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p14",
+        "raspberry-pi-hardware.pdf p13",
+        "raspberry-pi-hardware.pdf p12",
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p3"
+      ]
+    },
+    {
+      "id": "rpi-08",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 41.5,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p12",
+        "raspberry-pi-hardware.pdf p14",
+        "raspberry-pi-hardware.pdf p3",
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p13"
+      ]
+    },
+    {
+      "id": "rpi-09",
+      "tags": [
+        "exact"
+      ],
+      "rank": 1,
+      "latency_ms": 34.6,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p13",
+        "nist-sp800-63b.pdf p9",
+        "mdn-http-es.pdf p36",
+        "raspberry-pi-hardware.pdf p12",
+        "pep8-style-guide.pdf p10"
+      ]
+    },
+    {
+      "id": "rpi-10",
+      "tags": [
+        "exact"
+      ],
+      "rank": 3,
+      "latency_ms": 37.5,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p16",
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p14",
+        "raspberry-pi-hardware.pdf p1",
+        "raspberry-pi-hardware.pdf p4"
+      ]
+    },
+    {
+      "id": "rpi-11",
+      "tags": [
+        "exact"
+      ],
+      "rank": 1,
+      "latency_ms": 36.8,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p1",
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p3",
+        "raspberry-pi-hardware.pdf p14",
+        "raspberry-pi-hardware.pdf p4"
+      ]
+    },
+    {
+      "id": "rpi-12",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 39.3,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p16",
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p1",
+        "raspberry-pi-hardware.pdf p3",
+        "raspberry-pi-hardware.pdf p14"
+      ]
+    },
+    {
+      "id": "rpi-13",
+      "tags": [
+        "exact"
+      ],
+      "rank": 1,
+      "latency_ms": 41.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p5",
+        "raspberry-pi-hardware.pdf p4",
+        "raspberry-pi-hardware.pdf p10",
+        "raspberry-pi-hardware.pdf p6",
+        "raspberry-pi-hardware.pdf p9"
+      ]
+    },
+    {
+      "id": "rpi-14",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 37.6,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p14",
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p13",
+        "raspberry-pi-hardware.pdf p3",
+        "raspberry-pi-hardware.pdf p1"
+      ]
+    },
+    {
+      "id": "rpi-15",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 36.8,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p13",
+        "raspberry-pi-hardware.pdf p12",
+        "raspberry-pi-hardware.pdf p9",
+        "raspberry-pi-hardware.pdf p14",
+        "raspberry-pi-hardware.pdf p4"
+      ]
+    },
+    {
+      "id": "rpi-16",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 37.8,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "raspberry-pi-hardware.pdf p15",
+        "raspberry-pi-hardware.pdf p16",
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p4",
+        "raspberry-pi-hardware.pdf p1"
+      ]
+    },
+    {
+      "id": "nist-01",
+      "tags": [],
+      "rank": 5,
+      "latency_ms": 37.8,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p27",
+        "nist-sp800-63b.pdf p28",
+        "nist-sp800-63b.pdf p29",
+        "nist-sp800-63b.pdf p18",
+        "nist-sp800-63b.pdf p8"
+      ]
+    },
+    {
+      "id": "nist-02",
+      "tags": [
+        "exact"
+      ],
+      "rank": 2,
+      "latency_ms": 37.6,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p9",
+        "nist-sp800-63b.pdf p8",
+        "nist-sp800-63b.pdf p5",
+        "nist-sp800-63b.pdf p19",
+        "nist-sp800-63b.pdf p27"
+      ]
+    },
+    {
+      "id": "nist-03",
+      "tags": [],
+      "rank": 2,
+      "latency_ms": 41.0,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p26",
+        "nist-sp800-63b.pdf p4",
+        "nist-sp800-63b.pdf p3",
+        "nist-sp800-63b.pdf p5",
+        "nist-sp800-63b.pdf p25"
+      ]
+    },
+    {
+      "id": "nist-04",
+      "tags": [],
+      "rank": 2,
+      "latency_ms": 43.3,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p4",
+        "nist-sp800-63b.pdf p5",
+        "nist-sp800-63b.pdf p26",
+        "nist-sp800-63b.pdf p3",
+        "nist-sp800-63b.pdf p25"
+      ]
+    },
+    {
+      "id": "nist-05",
+      "tags": [
+        "exact"
+      ],
+      "rank": 2,
+      "latency_ms": 38.3,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p20",
+        "nist-sp800-63b.pdf p19",
+        "nist-sp800-63b.pdf p27",
+        "nist-sp800-63b.pdf p5",
+        "nist-sp800-63b.pdf p29"
+      ]
+    },
+    {
+      "id": "nist-06",
+      "tags": [
+        "exact"
+      ],
+      "rank": 2,
+      "latency_ms": 40.4,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p5",
+        "nist-sp800-63b.pdf p12",
+        "nist-sp800-63b.pdf p2",
+        "nist-sp800-63b.pdf p11",
+        "nist-sp800-63b.pdf p4"
+      ]
+    },
+    {
+      "id": "nist-07",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 43.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p9",
+        "nist-sp800-63b.pdf p28",
+        "nist-sp800-63b.pdf p10",
+        "nist-sp800-63b.pdf p8",
+        "nist-sp800-63b.pdf p27"
+      ]
+    },
+    {
+      "id": "nist-08",
+      "tags": [
+        "exact"
+      ],
+      "rank": 1,
+      "latency_ms": 37.8,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p9",
+        "raspberry-pi-hardware.pdf p9",
+        "raspberry-pi-hardware.pdf p6",
+        "raspberry-pi-hardware.pdf p5",
+        "raspberry-pi-hardware.pdf p13"
+      ]
+    },
+    {
+      "id": "nist-09",
+      "tags": [],
+      "rank": 2,
+      "latency_ms": 35.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p27",
+        "nist-sp800-63b.pdf p10",
+        "nist-sp800-63b.pdf p29",
+        "nist-sp800-63b.pdf p9",
+        "nist-sp800-63b.pdf p8"
+      ]
+    },
+    {
+      "id": "nist-10",
+      "tags": [
+        "exact"
+      ],
+      "rank": 1,
+      "latency_ms": 35.5,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p20",
+        "nist-sp800-63b.pdf p19",
+        "nist-sp800-63b.pdf p18",
+        "nist-sp800-63b.pdf p21",
+        "nist-sp800-63b.pdf p15"
+      ]
+    },
+    {
+      "id": "nist-11",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 33.7,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p20",
+        "nist-sp800-63b.pdf p5",
+        "nist-sp800-63b.pdf p18",
+        "nist-sp800-63b.pdf p19",
+        "nist-sp800-63b.pdf p2"
+      ]
+    },
+    {
+      "id": "nist-12",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 34.2,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p14",
+        "nist-sp800-63b.pdf p15",
+        "nist-sp800-63b.pdf p5",
+        "raspberry-pi-hardware.pdf p5",
+        "nist-sp800-63b.pdf p13"
+      ]
+    },
+    {
+      "id": "nist-13",
+      "tags": [],
+      "rank": 6,
+      "latency_ms": 33.7,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p11",
+        "nist-sp800-63b.pdf p14",
+        "nist-sp800-63b.pdf p15",
+        "mdn-http-es.pdf p1",
+        "nist-sp800-63b.pdf p3"
+      ]
+    },
+    {
+      "id": "nist-14",
+      "tags": [],
+      "rank": 6,
+      "latency_ms": 34.6,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p27",
+        "nist-sp800-63b.pdf p29",
+        "nist-sp800-63b.pdf p9",
+        "nist-sp800-63b.pdf p10",
+        "nist-sp800-63b.pdf p8"
+      ]
+    },
+    {
+      "id": "nist-15",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 40.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p25",
+        "mdn-http-es.pdf p31",
+        "nist-sp800-63b.pdf p26",
+        "mdn-http-es.pdf p30",
+        "mdn-http-es.pdf p29"
+      ]
+    },
+    {
+      "id": "nist-16",
+      "tags": [
+        "exact"
+      ],
+      "rank": 1,
+      "latency_ms": 35.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p5",
+        "nist-sp800-63b.pdf p1",
+        "nist-sp800-63b.pdf p2",
+        "nist-sp800-63b.pdf p4",
+        "nist-sp800-63b.pdf p7"
+      ]
+    },
+    {
+      "id": "nist-17",
+      "tags": [],
+      "rank": 5,
+      "latency_ms": 33.9,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p26",
+        "nist-sp800-63b.pdf p3",
+        "nist-sp800-63b.pdf p5",
+        "nist-sp800-63b.pdf p4",
+        "nist-sp800-63b.pdf p2"
+      ]
+    },
+    {
+      "id": "pep8-01",
+      "tags": [
+        "exact"
+      ],
+      "rank": 1,
+      "latency_ms": 34.6,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p4",
+        "pep8-style-guide.pdf p2",
+        "pep8-style-guide.pdf p10",
+        "pep8-style-guide.pdf p12",
+        "pep8-style-guide.pdf p5"
+      ]
+    },
+    {
+      "id": "pep8-02",
+      "tags": [
+        "exact"
+      ],
+      "rank": 2,
+      "latency_ms": 34.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p14",
+        "pep8-style-guide.pdf p4",
+        "pep8-style-guide.pdf p13",
+        "pep8-style-guide.pdf p12",
+        "pep8-style-guide.pdf p2"
+      ]
+    },
+    {
+      "id": "pep8-03",
+      "tags": [
+        "exact"
+      ],
+      "rank": 2,
+      "latency_ms": 34.3,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "nist-sp800-63b.pdf p8",
+        "pep8-style-guide.pdf p4",
+        "pep8-style-guide.pdf p5",
+        "nist-sp800-63b.pdf p28",
+        "pep8-style-guide.pdf p12"
+      ]
+    },
+    {
+      "id": "pep8-04",
+      "tags": [],
+      "rank": 2,
+      "latency_ms": 34.2,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p4",
+        "pep8-style-guide.pdf p2",
+        "pep8-style-guide.pdf p3",
+        "pep8-style-guide.pdf p9",
+        "pep8-style-guide.pdf p10"
+      ]
+    },
+    {
+      "id": "pep8-05",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 33.3,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p5",
+        "pep8-style-guide.pdf p12",
+        "pep8-style-guide.pdf p19",
+        "pep8-style-guide.pdf p3",
+        "pep8-style-guide.pdf p2"
+      ]
+    },
+    {
+      "id": "pep8-06",
+      "tags": [
+        "exact"
+      ],
+      "rank": 2,
+      "latency_ms": 34.9,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p6",
+        "pep8-style-guide.pdf p5",
+        "pep8-style-guide.pdf p1",
+        "pep8-style-guide.pdf p20",
+        "raspberry-pi-hardware.pdf p8"
+      ]
+    },
+    {
+      "id": "pep8-07",
+      "tags": [],
+      "rank": 2,
+      "latency_ms": 33.2,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p7",
+        "pep8-style-guide.pdf p6",
+        "pep8-style-guide.pdf p19",
+        "pep8-style-guide.pdf p15",
+        "pep8-style-guide.pdf p5"
+      ]
+    },
+    {
+      "id": "pep8-08",
+      "tags": [
+        "exact"
+      ],
+      "rank": 2,
+      "latency_ms": 35.7,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p19",
+        "pep8-style-guide.pdf p7",
+        "pep8-style-guide.pdf p27",
+        "raspberry-pi-hardware.pdf p9",
+        "pep8-style-guide.pdf p25"
+      ]
+    },
+    {
+      "id": "pep8-09",
+      "tags": [],
+      "rank": 3,
+      "latency_ms": 35.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p17",
+        "pep8-style-guide.pdf p15",
+        "pep8-style-guide.pdf p16",
+        "nist-sp800-63b.pdf p28",
+        "pep8-style-guide.pdf p18"
+      ]
+    },
+    {
+      "id": "pep8-10",
+      "tags": [],
+      "rank": 2,
+      "latency_ms": 33.5,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p19",
+        "pep8-style-guide.pdf p17",
+        "pep8-style-guide.pdf p21",
+        "pep8-style-guide.pdf p3",
+        "pep8-style-guide.pdf p11"
+      ]
+    },
+    {
+      "id": "pep8-11",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 32.6,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p18",
+        "pep8-style-guide.pdf p17",
+        "pep8-style-guide.pdf p15",
+        "pep8-style-guide.pdf p16",
+        "pep8-style-guide.pdf p19"
+      ]
+    },
+    {
+      "id": "pep8-12",
+      "tags": [],
+      "rank": 2,
+      "latency_ms": 32.6,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p24",
+        "pep8-style-guide.pdf p20",
+        "pep8-style-guide.pdf p3",
+        "pep8-style-guide.pdf p12",
+        "pep8-style-guide.pdf p22"
+      ]
+    },
+    {
+      "id": "pep8-13",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 36.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p24",
+        "pep8-style-guide.pdf p20",
+        "pep8-style-guide.pdf p21",
+        "pep8-style-guide.pdf p19",
+        "pep8-style-guide.pdf p25"
+      ]
+    },
+    {
+      "id": "pep8-14",
+      "tags": [],
+      "rank": 1,
+      "latency_ms": 37.4,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "pep8-style-guide.pdf p21",
+        "pep8-style-guide.pdf p19",
+        "pep8-style-guide.pdf p17",
+        "pep8-style-guide.pdf p18",
+        "pep8-style-guide.pdf p15"
+      ]
+    },
+    {
+      "id": "mdn-01",
+      "tags": [
+        "exact",
+        "cross-language"
+      ],
+      "rank": 2,
+      "latency_ms": 36.5,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p10",
+        "mdn-http-es.pdf p9",
+        "mdn-http-es.pdf p7",
+        "mdn-http-es.pdf p11",
+        "mdn-http-es.pdf p6"
+      ]
+    },
+    {
+      "id": "mdn-02",
+      "tags": [
+        "exact",
+        "cross-language"
+      ],
+      "rank": 1,
+      "latency_ms": 35.9,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p8",
+        "mdn-http-es.pdf p23",
+        "mdn-http-es.pdf p7",
+        "mdn-http-es.pdf p11",
+        "mdn-http-es.pdf p2"
+      ]
+    },
+    {
+      "id": "mdn-03",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": 1,
+      "latency_ms": 33.5,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p5",
+        "mdn-http-es.pdf p2",
+        "mdn-http-es.pdf p1",
+        "pep8-style-guide.pdf p22",
+        "mdn-http-es.pdf p35"
+      ]
+    },
+    {
+      "id": "mdn-04",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": null,
+      "latency_ms": 37.9,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p5",
+        "mdn-http-es.pdf p20",
+        "mdn-http-es.pdf p11",
+        "mdn-http-es.pdf p21",
+        "mdn-http-es.pdf p18"
+      ]
+    },
+    {
+      "id": "mdn-05",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": 1,
+      "latency_ms": 34.0,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p11",
+        "mdn-http-es.pdf p9",
+        "mdn-http-es.pdf p12",
+        "mdn-http-es.pdf p26",
+        "mdn-http-es.pdf p2"
+      ]
+    },
+    {
+      "id": "mdn-06",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": 1,
+      "latency_ms": 35.7,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p14",
+        "mdn-http-es.pdf p19",
+        "mdn-http-es.pdf p20",
+        "mdn-http-es.pdf p18",
+        "mdn-http-es.pdf p21"
+      ]
+    },
+    {
+      "id": "mdn-07",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": null,
+      "latency_ms": 35.0,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p14",
+        "mdn-http-es.pdf p19",
+        "mdn-http-es.pdf p21",
+        "mdn-http-es.pdf p12",
+        "mdn-http-es.pdf p20"
+      ]
+    },
+    {
+      "id": "mdn-08",
+      "tags": [
+        "exact",
+        "cross-language"
+      ],
+      "rank": 1,
+      "latency_ms": 34.2,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p16",
+        "mdn-http-es.pdf p17",
+        "mdn-http-es.pdf p13",
+        "mdn-http-es.pdf p14",
+        "mdn-http-es.pdf p20"
+      ]
+    },
+    {
+      "id": "mdn-09",
+      "tags": [
+        "exact",
+        "cross-language"
+      ],
+      "rank": 1,
+      "latency_ms": 34.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p34",
+        "mdn-http-es.pdf p35",
+        "raspberry-pi-hardware.pdf p10",
+        "pep8-style-guide.pdf p13",
+        "mdn-http-es.pdf p36"
+      ]
+    },
+    {
+      "id": "mdn-10",
+      "tags": [
+        "exact",
+        "cross-language"
+      ],
+      "rank": 2,
+      "latency_ms": 33.3,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p33",
+        "mdn-http-es.pdf p32",
+        "mdn-http-es.pdf p31",
+        "pep8-style-guide.pdf p1",
+        "raspberry-pi-hardware.pdf p5"
+      ]
+    },
+    {
+      "id": "mdn-11",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": 2,
+      "latency_ms": 34.2,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p31",
+        "mdn-http-es.pdf p30",
+        "mdn-http-es.pdf p28",
+        "nist-sp800-63b.pdf p25",
+        "mdn-http-es.pdf p32"
+      ]
+    },
+    {
+      "id": "mdn-12",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": 1,
+      "latency_ms": 35.7,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p29",
+        "mdn-http-es.pdf p30",
+        "mdn-http-es.pdf p18",
+        "mdn-http-es.pdf p19",
+        "mdn-http-es.pdf p17"
+      ]
+    },
+    {
+      "id": "mdn-13",
+      "tags": [
+        "exact",
+        "cross-language"
+      ],
+      "rank": 2,
+      "latency_ms": 34.3,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p28",
+        "mdn-http-es.pdf p31",
+        "mdn-http-es.pdf p30",
+        "mdn-http-es.pdf p29",
+        "mdn-http-es.pdf p23"
+      ]
+    },
+    {
+      "id": "mdn-14",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": 1,
+      "latency_ms": 34.6,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p38",
+        "mdn-http-es.pdf p32",
+        "mdn-http-es.pdf p31",
+        "mdn-http-es.pdf p33",
+        "mdn-http-es.pdf p26"
+      ]
+    },
+    {
+      "id": "mdn-15",
+      "tags": [
+        "exact",
+        "cross-language"
+      ],
+      "rank": 2,
+      "latency_ms": 34.2,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p29",
+        "mdn-http-es.pdf p23",
+        "mdn-http-es.pdf p30",
+        "mdn-http-es.pdf p28",
+        "mdn-http-es.pdf p22"
+      ]
+    },
+    {
+      "id": "mdn-16",
+      "tags": [
+        "exact",
+        "cross-language"
+      ],
+      "rank": null,
+      "latency_ms": 33.4,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p6",
+        "mdn-http-es.pdf p11",
+        "mdn-http-es.pdf p2",
+        "raspberry-pi-hardware.pdf p5",
+        "mdn-http-es.pdf p5"
+      ]
+    },
+    {
+      "id": "mdn-17",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": 2,
+      "latency_ms": 34.2,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p36",
+        "mdn-http-es.pdf p37",
+        "pep8-style-guide.pdf p15",
+        "pep8-style-guide.pdf p13",
+        "pep8-style-guide.pdf p17"
+      ]
+    },
+    {
+      "id": "mdn-18",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": 1,
+      "latency_ms": 35.1,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p4",
+        "mdn-http-es.pdf p36",
+        "mdn-http-es.pdf p2",
+        "mdn-http-es.pdf p5",
+        "mdn-http-es.pdf p18"
+      ]
+    },
+    {
+      "id": "mdn-19",
+      "tags": [
+        "cross-language"
+      ],
+      "rank": 7,
+      "latency_ms": 33.5,
+      "llm_calls": 0,
+      "queries": [],
+      "top": [
+        "mdn-http-es.pdf p26",
+        "mdn-http-es.pdf p7",
+        "mdn-http-es.pdf p5",
+        "mdn-http-es.pdf p33",
+        "mdn-http-es.pdf p12"
+      ]
+    }
+  ]
+}

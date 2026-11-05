@@ -6,19 +6,21 @@ from . import check, ollama_models, openai_model_ids, post_with_retry
 
 class AnthropicLLM:
     def __init__(self, api_key, model, temperature):
-        self.api_key, self.model, self.temperature = api_key, model, temperature
+        self.model, self.temperature = model, temperature
+        self.headers = {"x-api-key": api_key, "anthropic-version": "2023-06-01"}
 
     def complete(self, system, user):
-        r = post_with_retry("https://api.anthropic.com/v1/messages", timeout=180, headers={
-            "x-api-key": self.api_key, "anthropic-version": "2023-06-01"}, json={
-            "model": self.model, "max_tokens": 2048, "temperature": self.temperature,
-            "system": system, "messages": [{"role": "user", "content": user}]})
-        check(r)
+        body = {"model": self.model, "max_tokens": 2048, "system": system,
+                "messages": [{"role": "user", "content": user}]}
+        r = _post_with_temperature(("anthropic", "", self.model), body, self.temperature, self._post)
         return "".join(b.get("text", "") for b in r.json()["content"])
 
+    def _post(self, body):
+        return post_with_retry("https://api.anthropic.com/v1/messages", timeout=180, headers=self.headers, json=body)
+
     def models(self):
-        r = check(httpx.get("https://api.anthropic.com/v1/models", params={"limit": 1000}, timeout=30, headers={
-            "x-api-key": self.api_key, "anthropic-version": "2023-06-01"}))
+        r = check(httpx.get("https://api.anthropic.com/v1/models", params={"limit": 1000}, timeout=30,
+                            headers=self.headers))
         return [m["id"] for m in r.json()["data"]]
 
 
@@ -30,14 +32,8 @@ class OpenAILLM:
     def complete(self, system, user):
         body = {"model": self.model,
                 "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
-        key = (self.base_url, self.model)
-        if key not in _DEFAULT_TEMPERATURE_ONLY:
-            r = self._post({**body, "temperature": self.temperature})
-            # Reasoning models (OpenAI's gpt-5 and o-series) reject any temperature but the default.
-            if not (r.status_code == 400 and "temperature" in r.text):
-                return check(r).json()["choices"][0]["message"]["content"]
-            _DEFAULT_TEMPERATURE_ONLY.add(key)
-        return check(self._post(body)).json()["choices"][0]["message"]["content"]
+        r = _post_with_temperature(("openai", self.base_url, self.model), body, self.temperature, self._post)
+        return r.json()["choices"][0]["message"]["content"]
 
     def _post(self, body):
         return post_with_retry(f"{self.base_url}/chat/completions", headers=self.headers, timeout=180, json=body)
@@ -48,7 +44,30 @@ class OpenAILLM:
         return [i for i in openai_model_ids(self.base_url, self.headers) if not any(x in i for x in _NOT_CHAT)]
 
 
-_DEFAULT_TEMPERATURE_ONLY: set[tuple[str, str]] = set()  # (base_url, model) seen rejecting a temperature
+# (provider, base_url, model) seen rejecting the temperature parameter: newer Claude models ("`temperature` is
+# deprecated for this model") and OpenAI's reasoning models ("Unsupported value: 'temperature' ...").
+_DEFAULT_TEMPERATURE_ONLY: set[tuple[str, str, str]] = set()
+_REJECTS_TEMPERATURE = ("deprecated", "unsupported", "not supported", "does not support")
+
+
+def _rejects_temperature(r: httpx.Response) -> bool:
+    """A 400 saying the model takes no temperature at all, as opposed to one out of range, which is the user's
+    to fix and must not be dropped silently."""
+    text = r.text.lower()
+    return r.status_code == 400 and "temperature" in text and any(w in text for w in _REJECTS_TEMPERATURE)
+
+
+def _post_with_temperature(key, body, temperature, post) -> httpx.Response:
+    """POST with the configured temperature; when the model rejects the parameter, remember that and resend
+    without it."""
+    if key not in _DEFAULT_TEMPERATURE_ONLY:
+        r = post({**body, "temperature": temperature})
+        if not _rejects_temperature(r):
+            return check(r)
+        _DEFAULT_TEMPERATURE_ONLY.add(key)
+    return check(post(body))
+
+
 _NOT_CHAT = ("embed", "whisper", "tts", "dall-e", "moderation", "davinci", "babbage", "transcribe",
              "image", "audio", "realtime", "search", "sora", "instruct", "codex", "-pro")
 
