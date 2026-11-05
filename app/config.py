@@ -33,7 +33,9 @@ DEFAULTS = {
         "temperature": 0.2,
     },
     # query_rewrite: have the LLM turn each question into search queries in the documents' languages.
-    "rag": {"chunk_tokens": 400, "chunk_overlap_tokens": 60, "top_k": 5, "query_rewrite": True},
+    # search_mode: "vector", or "hybrid" to also search by keyword and fuse the two rankings.
+    "rag": {"chunk_tokens": 400, "chunk_overlap_tokens": 60, "top_k": 5, "query_rewrite": True,
+            "search_mode": "vector"},
 }
 
 SECRET_KEYS = {"api_key", "dsn"}

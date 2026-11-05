@@ -64,6 +64,13 @@ def test_admin_page(ui, lighthouse):
     expect(ui.locator("#debug-hits")).to_contain_text("1 hits")
     expect(ui.locator("#debug-hits .hit")).to_contain_text("lighthouse.pdf, page 1")
 
+    ui.fill("#debug-q", "quince")
+    ui.fill("#debug-k", "2")
+    ui.select_option("#debug-mode", "hybrid")
+    ui.click("#debug-form button")
+    expect(ui.locator("#debug-hits")).to_contain_text("(hybrid search)")
+    expect(ui.locator("#debug-hits")).to_contain_text("keyword")
+
     expect(ui.locator("#events")).to_contain_text("[ingest]")
 
 

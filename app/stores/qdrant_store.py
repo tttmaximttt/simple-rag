@@ -2,13 +2,16 @@ import uuid
 
 from qdrant_client import QdrantClient, models
 
-from . import dimension_mismatch
+from . import bm25, dimension_mismatch
+
+LOAD_BATCH = 1000
 
 
 class QdrantStore:
     def __init__(self, url, api_key, collection):
         self.client = QdrantClient(url=url, api_key=api_key, timeout=10)
         self.collection = collection
+        self._key = ("qdrant", url, collection)
 
     def ping(self):
         self.client.get_collections()
@@ -27,9 +30,12 @@ class QdrantStore:
         self.client.create_payload_index(self.collection, "doc_id", models.PayloadSchemaType.KEYWORD)
 
     def upsert(self, items):
+        # The payload search returns; "language" only picks pgvector's text-search configuration.
+        payloads = [{k: v for k, v in p.items() if k != "language"} for _, _, p in items]
         self.client.upsert(self.collection, points=[
             models.PointStruct(id=str(uuid.uuid5(uuid.NAMESPACE_URL, i)), vector=v, payload=p)
-            for i, v, p in items])
+            for (i, v, _), p in zip(items, payloads)])
+        bm25.added(self._key, payloads)
 
     def search(self, vector, k):
         if not self.client.collection_exists(self.collection):
@@ -41,6 +47,22 @@ class QdrantStore:
         if self.client.collection_exists(self.collection):
             self.client.delete(self.collection, points_selector=models.Filter(must=[
                 models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]))
+            bm25.removed(self._key, doc_id)
+
+    def keyword_search(self, query, k):
+        return bm25.search(self._key, self.count(), self._all_chunks, query, k)
+
+    def _all_chunks(self):
+        out, offset = [], None
+        while True:
+            points, offset = self.client.scroll(self.collection, limit=LOAD_BATCH, offset=offset,
+                                                with_payload=True, with_vectors=False)
+            out += [p.payload for p in points]
+            if offset is None:
+                return out
+
+    def keyword_missing(self, doc_ids=None):
+        return 0  # the BM25 sidecar is built from the stored chunks
 
     def count(self):
         if not self.client.collection_exists(self.collection):

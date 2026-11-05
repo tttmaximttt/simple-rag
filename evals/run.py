@@ -175,7 +175,7 @@ def run(args, overrides, settings, work: Path) -> dict:
             "embeddings": f"{cfg['embeddings']['provider']}:{cfg['embeddings'][cfg['embeddings']['provider']]['model']}",
             "llm": f"{cfg['llm']['provider']}:{cfg['llm'][cfg['llm']['provider']]['model']}",
             "chunk_tokens": cfg["rag"]["chunk_tokens"], "chunk_overlap_tokens": cfg["rag"]["chunk_overlap_tokens"],
-            "query_rewrite": bool(cfg["rag"]["query_rewrite"]), "k": K,
+            "query_rewrite": bool(cfg["rag"]["query_rewrite"]), "search_mode": cfg["rag"]["search_mode"], "k": K,
         },
         "dataset": {"questions": len(questions), "documents": sorted({q["doc"] for q in everything}),
                     "ingest_seconds": round(ingest_s, 1)},
@@ -269,7 +269,8 @@ def markdown(r: dict) -> str:
         f"# Retrieval eval: {r['config']} ({r['date']})", "",
         r["description"] or "", "",
         f"Commit `{r['commit']}` · store {s['vector_store']} · embeddings `{s['embeddings']}` · LLM `{s['llm']}` · "
-        f"chunks {s['chunk_tokens']}/{s['chunk_overlap_tokens']} tokens · rewrite {'on' if s['query_rewrite'] else 'off'} · "
+        f"chunks {s['chunk_tokens']}/{s['chunk_overlap_tokens']} tokens · {s.get('search_mode', 'vector')} search · "
+        f"rewrite {'on' if s['query_rewrite'] else 'off'} · "
         f"{r['dataset']['questions']} questions over {len(r['dataset']['documents'])} PDFs", "",
         "| Slice | Questions | Recall@1 | Recall@5 | Recall@10 | MRR@10 | p50 | p95 | LLM calls/query |",
         "|---|---|---|---|---|---|---|---|---|",

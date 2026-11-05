@@ -1,0 +1,4 @@
+{
+  "description": "Hybrid search: vector and keyword rankings fused by reciprocal rank, no query rewrite.",
+  "rag": {"query_rewrite": false, "search_mode": "hybrid"}
+}

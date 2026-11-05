@@ -34,6 +34,8 @@ EMBED_BATCH = 64
 MAX_TOP_K = 50
 CHUNKS_PER_PAGE = 3
 QUESTION_PAGES = 2  # pages kept from the question's own search when it's rewritten
+SEARCH_MODES = ("vector", "hybrid")  # hybrid: keyword search too, fused with the vector results
+RRF_K = 60
 _progress: dict = {}  # the document being ingested: doc_id, stage, done, total
 
 
@@ -98,7 +100,7 @@ def _read_pages(doc_id, path):
     return texts
 
 
-def _embed(doc_id, filename, pieces, emb, store):
+def _embed(doc_id, filename, language, pieces, emb, store):
     batches = [(pieces[b:b + EMBED_BATCH],) for b in range(0, len(pieces), EMBED_BATCH)]
     _report(doc_id, "embedding", 0, len(pieces))
     # Remote APIs get a few requests in flight; local models already use every core.
@@ -109,8 +111,8 @@ def _embed(doc_id, filename, pieces, emb, store):
                                            lambda: _report(doc_id, "embedding", done, len(pieces))):
             if not done:
                 store.ensure(len(vectors[0]))
-            store.upsert([(f"{doc_id}:{ci}", v, {"doc_id": doc_id, "filename": filename,
-                                                 "page": p, "chunk": ci, "text": t})
+            store.upsert([(f"{doc_id}:{ci}", v, {"doc_id": doc_id, "filename": filename, "page": p,
+                                                 "chunk": ci, "text": t, "language": language})
                           for (p, ci, t), v in zip(batch, vectors)])
             done += len(batch)
             _report(doc_id, "embedding", done, len(pieces))
@@ -147,13 +149,14 @@ def ingest(doc_id):
         if not pieces:
             raise ValueError("No extractable text (scanned PDF? OCR is not supported yet)")
 
+        language = pdftext.detect_language(" ".join(texts))  # also picks the keyword index's language rules
         store = stores.get(cfg)
         store.delete_doc(doc_id)
-        _embed(doc_id, doc["filename"], pieces, embeddings.get(cfg), store)
+        _embed(doc_id, doc["filename"], language, pieces, embeddings.get(cfg), store)
         dur = time.time() - t0
         if not db.execute("UPDATE documents SET status='ready', pages=?, chunks=?, updated=?, duration=?, language=? "
                           "WHERE id=? AND status='processing'",
-                          (len(texts), len(pieces), time.time(), dur, pdftext.detect_language(" ".join(texts)), doc_id)):
+                          (len(texts), len(pieces), time.time(), dur, language, doc_id)):
             raise Cancelled
         db.log("info", "ingest", f"{doc['filename']}: {len(pieces)} chunks of <= {size} tokens "
                f"from {len(texts)} pages in {dur:.1f}s")
@@ -292,32 +295,58 @@ def _without_shared_names(query, shared):
     return " ".join(kept) or query
 
 
-def retrieve(question, k=None, queries=()):
-    """The k best-matching pages for the question and any extra queries. Overlapping chunks often match
+def search_mode(cfg, mode=None) -> str:
+    mode = mode or cfg["rag"].get("search_mode") or "vector"
+    if mode not in SEARCH_MODES:
+        raise ValueError(f"Unknown search mode {mode!r}: use one of {', '.join(SEARCH_MODES)}")
+    return mode
+
+
+def fuse(lists):
+    """Reciprocal rank fusion of ranked hit lists: rank chunks by how high each list put them, not by raw
+    score, so a page one specific query (or the keyword search) puts first isn't crowded out by pages that
+    match everything a little, and scores of different kinds (cosine, BM25) never have to be compared.
+
+    lists: (path, hits) pairs. Returns the chunks best first, each with the best vector score seen (0.0 when
+    only keyword search found it) and found_by, the paths that found it."""
+    chunk, fused, found, similarity = {}, {}, {}, {}
+    for path, hits in lists:
+        for rank, h in enumerate(hits):
+            key = (h["doc_id"], h["chunk"])
+            chunk.setdefault(key, h)
+            fused[key] = fused.get(key, 0) + 1 / (RRF_K + rank)
+            found.setdefault(key, set()).add(path)
+            if path == "vector":  # what the UI shows as the score is cosine similarity
+                similarity[key] = max(similarity.get(key, h["score"]), h["score"])
+    order = sorted(chunk, key=lambda key: -fused[key])
+    return [{**chunk[key], "score": similarity.get(key, 0.0), "found_by": sorted(found[key])} for key in order]
+
+
+def retrieve(question, k=None, queries=(), mode=None):
+    """The k best-matching pages for the question and any extra queries. Each query is searched by vector and,
+    in hybrid mode, by keyword, and all the rankings are fused (fuse()). Overlapping chunks often match
     together, so several chunks are fetched per page wanted and those from one page (up to CHUNKS_PER_PAGE)
     are merged into a single hit with the best score."""
     cfg = config.load()
     k = max(1, min(int(k or cfg["rag"]["top_k"]), MAX_TOP_K))  # MCP clients pass top_k unchecked
+    hybrid = search_mode(cfg, mode) == "hybrid"
     store = stores.get(cfg)
     ready = _ready_docs()
     searches = [_without_shared_names(question, _shared_names([d["filename"] for d in ready])), *queries]
     ids = {d["id"] for d in ready}
     # Vectors can outlive their document (deleted while the store was down, an old collection): don't return them.
-    results = [[h for h in hits if h["doc_id"] in ids]
-               for hits in (store.search(vec, k * CHUNKS_PER_PAGE) for vec in embeddings.get(cfg).embed(searches))]
-    # Reciprocal rank fusion: rank by how high each query ranked a chunk, not by raw score, so a page that one
-    # specific query puts first isn't crowded out by pages that match every query a little.
-    best, fused = {}, {}
-    for hits in results:
-        for rank, h in enumerate(hits):
-            key = (h["doc_id"], h["chunk"])
-            fused[key] = fused.get(key, 0) + 1 / (60 + rank)
-            if key not in best or h["score"] > best[key]["score"]:
-                best[key] = h  # keeps the best similarity score for display
+    keep = lambda hits: [h for h in hits if h["doc_id"] in ids]
+    n = k * CHUNKS_PER_PAGE
+    lists = []  # (query index, path, hits)
+    for i, (text, vec) in enumerate(zip(searches, embeddings.get(cfg).embed(searches))):
+        lists.append((i, "vector", keep(store.search(vec, n))))
+        if hybrid:
+            lists.append((i, "keyword", keep(store.keyword_search(text, n))))
+    order = fuse([(path, hits) for _, path, hits in lists])
     # The question's own top pages go first: in the documents' language its wording is usually the best query,
     # and the rewritten ones add what it misses. Some places are always left for those.
-    own = list(dict.fromkeys((h["doc_id"], h["page"]) for h in results[0]))[:min(QUESTION_PAGES, k - 1)]
-    order = sorted(best.values(), key=lambda h: -fused[(h["doc_id"], h["chunk"])])
+    mine = fuse([(path, hits) for i, path, hits in lists if i == 0])
+    own = list(dict.fromkeys((h["doc_id"], h["page"]) for h in mine))[:min(QUESTION_PAGES, k - 1)]
     order.sort(key=lambda h: own.index((h["doc_id"], h["page"])) if (h["doc_id"], h["page"]) in own else len(own))
     pages = {}
     for h in order:
@@ -334,7 +363,10 @@ def retrieve(question, k=None, queries=()):
         text = in_order[0]["text"]
         for prev, c in zip(in_order, in_order[1:]):
             text = _join_overlap(text, c["text"], overlap) if c["chunk"] == prev["chunk"] + 1 else f"{text}\n…\n{c['text']}"
-        hits.append({**chunks[0], "score": max(c["score"] for c in chunks), "chunk": in_order[0]["chunk"], "text": text})
+        # The best cosine similarity among the chunks vector search found; 0.0 if only keyword search found any.
+        similar = [c["score"] for c in chunks if "vector" in c["found_by"]]
+        hits.append({**chunks[0], "score": max(similar, default=0.0), "chunk": in_order[0]["chunk"], "text": text,
+                     "found_by": sorted({p for c in chunks for p in c["found_by"]})})
     return hits
 
 
@@ -350,13 +382,15 @@ def _join_overlap(a: str, b: str, overlap_tokens: int) -> str:
     return f"{a} {b}"
 
 
-def search(question, k=None, rewrite_question=None):
-    """retrieve(), with the question rewritten into search queries first when that's on: the Setup option,
-    unless the caller says otherwise. Returns (question language or None, queries used, hits)."""
+def search(question, k=None, rewrite_question=None, mode=None):
+    """retrieve(), with the question rewritten into search queries first when that's on: the Setup options
+    (query rewrite, search mode), unless the caller says otherwise. Returns (question language or None,
+    queries used, hits)."""
     cfg = config.load()
+    mode = search_mode(cfg, mode)  # before the rewrite, so a bad mode costs no LLM call
     on = cfg["rag"]["query_rewrite"] if rewrite_question is None else rewrite_question
     language, queries = rewrite(question, cfg) if on else (None, [])
-    return language, queries, retrieve(question, k, queries)
+    return language, queries, retrieve(question, k, queries, mode)
 
 
 def answer(question, k=None):

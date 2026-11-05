@@ -1,6 +1,8 @@
 """MCP server (streamable HTTP at /mcp) so Claude, ChatGPT, and other MCP clients can
 search the documents. Tool names and result shapes follow the search/fetch convention
 ChatGPT connectors and deep research expect."""
+from typing import Literal
+
 from anyio import to_thread
 from mcp.server.mcpserver import MCPServer
 from pypdf import PdfReader
@@ -26,16 +28,19 @@ def _hit_id(h):
 
 
 @mcp.tool()
-async def search(query: str, top_k: int = 8, rewrite: bool | None = None) -> dict:
-    """Semantic search over the uploaded documents. Returns matching passages with ids
-    that can be passed to `fetch` to read the whole page. Documents may be in another language than the
-    query (see `list_documents`); unless `rewrite` is false or the server turned it off, the server also
-    searches with the query reworded and translated into the documents' languages, listed in `queries`."""
+async def search(query: str, top_k: int = 8, rewrite: bool | None = None,
+                 mode: Literal["vector", "hybrid"] | None = None) -> dict:
+    """Search the uploaded documents. Returns matching passages with ids that can be passed to `fetch` to
+    read the whole page. Documents may be in another language than the query (see `list_documents`); unless
+    `rewrite` is false or the server turned it off, the server also searches with the query reworded and
+    translated into the documents' languages, listed in `queries`. `mode` "hybrid" also matches by keyword,
+    which finds exact codes, numbers and names; "vector" matches by meaning only. It defaults to the server's
+    setting, and each result's `found_by` says which search found it."""
     _check_length("query", query)
-    _, queries, hits = await to_thread.run_sync(rag.search, query, top_k, rewrite)
+    _, queries, hits = await to_thread.run_sync(rag.search, query, top_k, rewrite, mode)
     return {"queries": queries,
             "results": [{"id": _hit_id(h), "title": f"{h['filename']} (page {h['page']})",
-                         "text": h["text"], "score": round(float(h["score"]), 4),
+                         "text": h["text"], "score": round(float(h["score"]), 4), "found_by": h["found_by"],
                          "url": f"rag://{_hit_id(h)}"} for h in hits]}
 
 

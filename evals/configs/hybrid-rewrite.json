@@ -1,0 +1,4 @@
+{
+  "description": "Hybrid search with the LLM query rewrite: every rewritten query is searched by vector and keyword.",
+  "rag": {"query_rewrite": true, "search_mode": "hybrid"}
+}
