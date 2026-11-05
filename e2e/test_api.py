@@ -53,6 +53,19 @@ def test_ingested_document(lighthouse):
     assert lighthouse["chunks"] >= 2
 
 
+@pytest.mark.parametrize("mode", ["vector", "hybrid"])
+def test_retrieve_says_which_search_found_each_page(v1, lighthouse, mode):
+    # "quince" is a word only page 2 has, so keyword search finds it there.
+    r = v1.post("/v1/retrieve", json={"query": "quince trees", "top_k": 2, "mode": mode, "rewrite": False})
+    assert r.status_code == 200, r.text
+    found = {(h["doc_id"], h["page"]): h["found_by"] for h in r.json()["results"]}
+    if mode == "hybrid":
+        assert "keyword" in found[(lighthouse["id"], 2)]
+    else:
+        assert all(f == ["vector"] for f in found.values())
+    assert v1.post("/v1/retrieve", json={"query": "q", "mode": "fuzzy"}).status_code == 422
+
+
 def test_retrieve_finds_the_right_page(v1, lighthouse):
     r = v1.post("/v1/retrieve", json={"query": QUESTION, "top_k": 3})
     assert r.status_code == 200, r.text
@@ -154,6 +167,8 @@ def test_admin_status_and_logs(admin, v1, lighthouse):
 
     hits = admin.post("/api/admin/retrieve", json={"question": QUESTION, "k": 2}).json()["hits"]
     assert len(hits) == 2 and hits[0]["doc_id"] == lighthouse["id"]
+    r = admin.post("/api/admin/retrieve", json={"question": "quince", "k": 2, "mode": "hybrid"}).json()
+    assert r["mode"] == "hybrid" and any("keyword" in h["found_by"] for h in r["hits"])
 
 
 def test_cross_origin_writes_are_blocked(admin):

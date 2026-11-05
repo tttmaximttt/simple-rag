@@ -142,12 +142,14 @@ class PgVectorStore:
                 f"""WITH words AS (
                         SELECT DISTINCT cfg, lex
                         FROM unnest(%s::text[]) AS cfg,
-                             unnest(tsvector_to_array(to_tsvector(cfg::regconfig, %s))) AS lex)
+                             unnest(tsvector_to_array(to_tsvector(cfg::regconfig, %s))) AS lex),
+                    sizes AS (SELECT ts_config AS cfg, COUNT(*) AS n FROM {self.table}
+                              WHERE ts_config IN (SELECT DISTINCT cfg FROM words) GROUP BY ts_config)
                     SELECT w.cfg, w.lex,
                            (SELECT COUNT(*) FROM {self.table} t
                             WHERE t.ts_config = w.cfg AND t.tsv @@ quote_literal(w.lex)::tsquery) AS df,
-                           (SELECT COUNT(*) FROM {self.table} t WHERE t.ts_config = w.cfg) AS n
-                    FROM words w""", (configs, query)).fetchall()
+                           s.n
+                    FROM words w JOIN sizes s ON s.cfg = w.cfg""", (configs, query)).fetchall()
             stats = [(cfg, lex, math.log(1 + (n - df + 0.5) / (df + 0.5))) for cfg, lex, df, n in stats if df]
             if not stats:
                 return []

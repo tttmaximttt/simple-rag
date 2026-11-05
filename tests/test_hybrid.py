@@ -52,6 +52,14 @@ def store(request):
 
 # ---------- keyword search in every store ----------
 
+def test_results_have_the_same_keys_in_every_store(store):
+    store.ensure(3)
+    store.upsert([chunk("a", 0, "alpha bravo")])
+    keys = {"doc_id", "filename", "page", "chunk", "text", "score"}
+    assert set(store.search([1.0, 0.0, 0.0], 1)[0]) == keys  # no "language", which only pgvector uses
+    assert set(store.keyword_search("alpha", 1)[0]) == keys
+
+
 def test_keyword_search_finds_exact_codes(store):
     assert store.keyword_search("a52082", 5) == []  # no collection yet
     store.ensure(3)
@@ -148,8 +156,8 @@ def test_chroma_sidecar_loads_more_than_one_batch(tmp_path, monkeypatch):
 
 def test_bm25_ranks_rare_terms_and_keeps_codes_whole():
     assert bm25.terms("IEEE 802.3at-2009 and Código") == ["ieee", "802.3at-2009", "802", "3at", "2009", "codigo"]
-    index = bm25.Index([{"text": "power power power supply"}, {"text": "power over ethernet 802.3at-2009"},
-                        {"text": "nothing relevant"}])
+    index = bm25.Index([{"doc_id": "d", "chunk": i, "text": t} for i, t in enumerate(
+        ["power power power supply", "power over ethernet 802.3at-2009", "nothing relevant"])])
     assert [h["text"] for h in index.search("802.3at-2009 power", 3)][0] == "power over ethernet 802.3at-2009"
     assert index.search("absent", 3) == []
 
@@ -262,25 +270,38 @@ def test_pgvector_concurrent_migrations_dont_collide(pgvector):
     assert errors == []
 
 
-def test_bm25_serves_the_previous_index_while_rebuilding():
-    import threading
-    key, started, release = ("t", "k"), threading.Event(), threading.Event()
-    assert bm25.search(key, 1, lambda: [{"text": "old words"}], "old", 5)[0]["text"] == "old words"
-    bm25.changed(key)
+def test_bm25_updates_in_place_instead_of_reloading():
+    key, loads = ("t", "k"), []
 
-    def slow_load():
-        started.set()
-        release.wait(5)
-        return [{"text": "new words"}]
+    def load():
+        loads.append(1)
+        return [{"doc_id": "a", "chunk": 0, "text": "old words"}]
 
-    rebuild = threading.Thread(target=lambda: bm25.search(key, 1, slow_load, "new", 5))
-    rebuild.start()
-    assert started.wait(5)
-    # A search during the rebuild neither waits nor rebuilds again: it gets the previous index.
-    assert bm25.search(key, 1, lambda: pytest.fail("second rebuild"), "old", 5)[0]["text"] == "old words"
-    release.set()
-    rebuild.join(5)
-    assert bm25.search(key, 1, lambda: pytest.fail("already rebuilt"), "new", 5)[0]["text"] == "new words"
+    assert bm25.search(key, 1, load, "old", 5)[0]["text"] == "old words"
+    bm25.added(key, [{"doc_id": "b", "chunk": 0, "text": "new words"}])  # an ingest batch
+    assert bm25.search(key, 2, load, "new", 5)[0]["doc_id"] == "b"
+    bm25.added(key, [{"doc_id": "b", "chunk": 0, "text": "replaced"}])  # an upsert of the same chunk
+    assert bm25.search(key, 2, load, "new", 5) == [] and bm25.search(key, 2, load, "replaced", 5)
+    bm25.removed(key, "a")
+    assert bm25.search(key, 1, load, "old", 5) == []
+    assert loads == [1]  # built once, then kept current
+    # A count the index doesn't have (another process wrote to the collection) rebuilds it.
+    assert bm25.search(key, 7, load, "old", 5)[0]["doc_id"] == "a" and loads == [1, 1]
+
+
+def test_bm25_keeps_only_the_recent_collections(monkeypatch):
+    monkeypatch.setattr(bm25, "MAX_INDEXES", 2)
+    loads = []
+    load = lambda name: (lambda: loads.append(name) or [{"doc_id": name, "chunk": 0, "text": "word"}])
+    for name in ("one", "two", "three"):
+        bm25.search((name,), 1, load(name), "word", 5)
+    bm25.search(("one",), 1, load("one"), "word", 5)  # dropped when "three" came in, so loaded again
+    assert loads == ["one", "two", "three", "one"]
+
+
+def test_bm25_folds_stop_words_like_the_text():
+    assert bm25.terms("¿Cuándo, dónde y quién? Más también") == []
+    assert bm25.terms("set dvfs=2") == ["set", "dvfs=2", "dvfs", "2"]
 
 
 @pytest.mark.usefixtures("docs")

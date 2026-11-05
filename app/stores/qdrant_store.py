@@ -30,10 +30,12 @@ class QdrantStore:
         self.client.create_payload_index(self.collection, "doc_id", models.PayloadSchemaType.KEYWORD)
 
     def upsert(self, items):
+        # The payload search returns; "language" only picks pgvector's text-search configuration.
+        payloads = [{k: v for k, v in p.items() if k != "language"} for _, _, p in items]
         self.client.upsert(self.collection, points=[
             models.PointStruct(id=str(uuid.uuid5(uuid.NAMESPACE_URL, i)), vector=v, payload=p)
-            for i, v, p in items])
-        bm25.changed(self._key)
+            for (i, v, _), p in zip(items, payloads)])
+        bm25.added(self._key, payloads)
 
     def search(self, vector, k):
         if not self.client.collection_exists(self.collection):
@@ -45,7 +47,7 @@ class QdrantStore:
         if self.client.collection_exists(self.collection):
             self.client.delete(self.collection, points_selector=models.Filter(must=[
                 models.FieldCondition(key="doc_id", match=models.MatchValue(value=doc_id))]))
-            bm25.changed(self._key)
+            bm25.removed(self._key, doc_id)
 
     def keyword_search(self, query, k):
         return bm25.search(self._key, self.count(), self._all_chunks, query, k)

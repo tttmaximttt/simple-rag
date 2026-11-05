@@ -20,7 +20,12 @@ class AnthropicLLM:
             text = "".join(b.get("text", "") for b in reply.get("content", []) if b.get("type", "text") == "text")
             # Models that think by default (Claude Sonnet 5.5, Opus 5.5) sometimes end the turn after a thinking
             # block with no text at all; asking again almost always gets an answer.
-            if text.strip() or reply.get("stop_reason") != "end_turn":
+            if text.strip():
+                return text
+            if reply.get("stop_reason") == "max_tokens":
+                # Thinking used up the whole output budget; asking again would do the same.
+                raise RuntimeError(f"{self.model} used all {body['max_tokens']} output tokens without answering")
+            if reply.get("stop_reason") != "end_turn":
                 return text
         raise RuntimeError(f"{self.model} returned no text in {EMPTY_REPLY_ATTEMPTS} attempts")
 

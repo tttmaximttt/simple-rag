@@ -32,11 +32,11 @@ class ChromaStore:
             raise dimension_mismatch(self.name, n, have, dim)
 
     def upsert(self, items):
+        metadatas = [{k: p[k] for k in ("doc_id", "filename", "page", "chunk")} for _, _, p in items]
         self._coll().upsert(
             ids=[i for i, _, _ in items], embeddings=[v for _, v, _ in items],
-            documents=[p["text"] for _, _, p in items],
-            metadatas=[{k: p[k] for k in ("doc_id", "filename", "page", "chunk")} for _, _, p in items])
-        bm25.changed(self._key)
+            documents=[p["text"] for _, _, p in items], metadatas=metadatas)
+        bm25.added(self._key, [{"text": p["text"], **m} for (_, _, p), m in zip(items, metadatas)])
 
     def search(self, vector, k):
         r = self._coll().query(query_embeddings=[vector], n_results=k)
@@ -60,7 +60,7 @@ class ChromaStore:
 
     def delete_doc(self, doc_id):
         self._coll().delete(where={"doc_id": doc_id})
-        bm25.changed(self._key)
+        bm25.removed(self._key, doc_id)
 
     def count(self):
         return self._coll().count()

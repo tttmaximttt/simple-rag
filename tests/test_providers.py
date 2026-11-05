@@ -182,3 +182,11 @@ def test_anthropic_refusal_is_an_error(monkeypatch):
     with pytest.raises(RuntimeError, match=r"declined the request \(cyber\)"):
         llm.AnthropicLLM("k", "claude-sonnet-5-5", 0.2).complete("s", "u")
     assert len(sent) == 1
+
+
+def test_anthropic_thinking_that_uses_up_max_tokens_is_an_error(monkeypatch):
+    out_of_tokens = {"stop_reason": "max_tokens", "content": [{"type": "thinking", "thinking": ""}]}
+    sent = _anthropic_replies(monkeypatch, [out_of_tokens])
+    with pytest.raises(RuntimeError, match="used all 2048 output tokens without answering"):
+        llm.AnthropicLLM("k", "claude-sonnet-5-5", 0.2).complete("s", "u")
+    assert len(sent) == 1  # asking again would only do the same

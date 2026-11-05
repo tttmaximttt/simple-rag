@@ -76,6 +76,13 @@ def test_search_then_fetch(mcp, lighthouse):
     assert page["metadata"] == {"filename": "lighthouse.pdf", "page": 1, "pages": 2}
 
 
+def test_search_modes(mcp, lighthouse):
+    hybrid = mcp.call("search", query="quince trees", top_k=2, mode="hybrid", rewrite=False)["results"]
+    assert any(r["id"] == f"{lighthouse['id']}:2" and "keyword" in r["found_by"] for r in hybrid)
+    vector = mcp.call("search", query="quince trees", top_k=2, mode="vector", rewrite=False)["results"]
+    assert all(r["found_by"] == ["vector"] for r in vector)
+
+
 def test_fetch_unknown_id_is_an_error(mcp):
     r = mcp.rpc("tools/call", {"name": "fetch", "arguments": {"id": "nope:1"}}).json()
     assert r.get("error") or r["result"]["isError"]
