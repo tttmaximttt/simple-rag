@@ -61,14 +61,14 @@ def _merge(base: dict, override: dict) -> dict:
 
 def load() -> dict:
     if CONFIG_PATH.exists():
-        return _merge(DEFAULTS, json.loads(CONFIG_PATH.read_text()))
+        return _merge(DEFAULTS, json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
     return _merge(DEFAULTS, {})
 
 
 def save(cfg: dict) -> None:
     with _lock:
         tmp = CONFIG_PATH.with_suffix(".tmp")
-        tmp.write_text(json.dumps(cfg, indent=2))
+        tmp.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
         os.chmod(tmp, 0o600)
         tmp.replace(CONFIG_PATH)
 
