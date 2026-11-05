@@ -105,7 +105,7 @@ async function updateTokenHint() {
 }
 // Each model input gets a dropdown of the provider's models; "Other…" (or a failed listing) falls back to typing a name.
 const OTHER = "__other__";
-const pickers = $$('input[name$=".model"]', form).map(input => {
+const pickers = $$('input[name$=".model"]:not([data-no-picker])', form).map(input => {
   const select = document.createElement("select");
   const hint = document.createElement("span");
   hint.className = "muted small";
@@ -357,7 +357,7 @@ function addMsg(cls, html) {
 }
 const foundBy = h => h.found_by?.length ? ` · found by ${h.found_by.map(esc).join(" + ")}` : "";
 const renderHits = hits => hits.map((h, i) => `<div class="hit"><strong>[${i + 1}] ${esc(h.filename)}, page ${h.page}</strong>
-  <span class="muted">${!h.found_by || h.found_by.includes("vector") ? `score ${Number(h.score).toFixed(3)}` : "keyword match"}${foundBy(h)}</span><div>${esc(h.text)}</div></div>`).join("");
+  <span class="muted">${!h.found_by || h.found_by.includes("vector") ? `score ${Number(h.score).toFixed(3)}` : "keyword match"}${foundBy(h)}${h.rerank_score === undefined ? "" : ` · rerank ${Number(h.rerank_score).toFixed(3)}`}</span><div>${esc(h.text)}</div></div>`).join("");
 $("#chat-form").addEventListener("submit", async e => {
   e.preventDefault();
   const q = $("#question").value.trim(); if (!q) return;

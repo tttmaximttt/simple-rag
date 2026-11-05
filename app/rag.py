@@ -11,7 +11,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from itertools import zip_longest
 
 from . import config, db, pdftext, stores, tokenizer
-from .providers import embeddings, llm
+from .providers import embeddings, llm, reranker
 
 SYSTEM_PROMPT = (
     "You answer questions using only the provided context from the user's documents. "
@@ -36,6 +36,7 @@ CHUNKS_PER_PAGE = 3
 QUESTION_PAGES = 2  # pages kept from the question's own search when it's rewritten
 SEARCH_MODES = ("vector", "hybrid")  # hybrid: keyword search too, fused with the vector results
 RRF_K = 60
+MAX_RERANK = 200  # most candidates the reranker may score per search
 _progress: dict = {}  # the document being ingested: doc_id, stage, done, total
 
 
@@ -336,18 +337,24 @@ def retrieve(question, k=None, queries=(), mode=None):
     ids = {d["id"] for d in ready}
     # Vectors can outlive their document (deleted while the store was down, an old collection): don't return them.
     keep = lambda hits: [h for h in hits if h["doc_id"] in ids]
-    n = k * CHUNKS_PER_PAGE
+    rr = reranker.get(cfg)
+    top_n = max(1, min(int(cfg["reranker"]["top_n"]), MAX_RERANK))
+    n = max(k * CHUNKS_PER_PAGE, top_n if rr else 0)  # enough candidates for the reranker to choose from
     lists = []  # (query index, path, hits)
     for i, (text, vec) in enumerate(zip(searches, embeddings.get(cfg).embed(searches))):
         lists.append((i, "vector", keep(store.search(vec, n))))
         if hybrid:
             lists.append((i, "keyword", keep(store.keyword_search(text, n))))
     order = fuse([(path, hits) for _, path, hits in lists])
-    # The question's own top pages go first: in the documents' language its wording is usually the best query,
-    # and the rewritten ones add what it misses. Some places are always left for those.
-    mine = fuse([(path, hits) for i, path, hits in lists if i == 0])
-    own = list(dict.fromkeys((h["doc_id"], h["page"]) for h in mine))[:min(QUESTION_PAGES, k - 1)]
-    order.sort(key=lambda h: own.index((h["doc_id"], h["page"])) if (h["doc_id"], h["page"]) in own else len(own))
+    if rr:
+        order = _rerank(rr, question, order, top_n)
+    else:
+        # The question's own top pages go first: in the documents' language its wording is usually the best
+        # query, and the rewritten ones add what it misses. Some places are always left for those. (A reranker
+        # judges every candidate against the question itself, so it doesn't need this.)
+        mine = fuse([(path, hits) for i, path, hits in lists if i == 0])
+        own = list(dict.fromkeys((h["doc_id"], h["page"]) for h in mine))[:min(QUESTION_PAGES, k - 1)]
+        order.sort(key=lambda h: own.index((h["doc_id"], h["page"])) if (h["doc_id"], h["page"]) in own else len(own))
     pages = {}
     for h in order:
         key = (h["doc_id"], h["page"])
@@ -365,9 +372,22 @@ def retrieve(question, k=None, queries=(), mode=None):
             text = _join_overlap(text, c["text"], overlap) if c["chunk"] == prev["chunk"] + 1 else f"{text}\n…\n{c['text']}"
         # The best cosine similarity among the chunks vector search found; 0.0 if only keyword search found any.
         similar = [c["score"] for c in chunks if "vector" in c["found_by"]]
-        hits.append({**chunks[0], "score": max(similar, default=0.0), "chunk": in_order[0]["chunk"], "text": text,
-                     "found_by": sorted({p for c in chunks for p in c["found_by"]})})
+        hit = {**chunks[0], "score": max(similar, default=0.0), "chunk": in_order[0]["chunk"], "text": text,
+               "found_by": sorted({p for c in chunks for p in c["found_by"]})}
+        if any("rerank_score" in c for c in chunks):
+            hit["rerank_score"] = max(c["rerank_score"] for c in chunks if "rerank_score" in c)
+        hits.append(hit)
     return hits
+
+
+def _rerank(rr, question, order, top_n):
+    """The first top_n fused chunks re-ordered by the reranker's score for the question, each with its
+    rerank_score; the rest follow in fused order. Chunks, not merged pages, are scored: a cross-encoder reads a
+    few hundred tokens, and a page of three merged chunks would be cut off."""
+    head, tail = order[:top_n], order[top_n:]
+    scores = rr.rerank(question, [h["text"] for h in head])
+    ranked = sorted(zip(scores, range(len(head)), head), key=lambda x: (-x[0], x[1]))
+    return [{**h, "rerank_score": s} for s, _, h in ranked] + tail
 
 
 def _join_overlap(a: str, b: str, overlap_tokens: int) -> str:

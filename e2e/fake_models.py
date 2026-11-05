@@ -5,6 +5,7 @@
   POST /v1/chat/completions  "pong" for the health check; the question itself for a search-query
                              rewrite; otherwise an answer that quotes the first context passage, so
                              tests can check that retrieval fed the LLM
+  POST /v1/rerank            Cohere-style rerank: the share of the query's longer words each document has
   GET  /files/<name>.pdf     a small PDF, for the URL import tests (404 for names starting "missing")
   GET  /health
 
@@ -29,6 +30,12 @@ def embed(text: str) -> list[float]:
         v[h % DIM] += 1.0
     norm = math.sqrt(sum(x * x for x in v)) or 1.0
     return [x / norm for x in v]
+
+
+def rerank(query: str, document: str) -> float:
+    """The share of the query's words (longer than 3 letters, so "the" and "how" don't count) in the document."""
+    words = lambda text: {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 3}
+    return len(words(query) & words(document)) / (len(words(query)) or 1)
 
 
 def chat(messages: list[dict]) -> str:
@@ -70,6 +77,10 @@ class Handler(BaseHTTPRequestHandler):
             texts = body["input"] if isinstance(body["input"], list) else [body["input"]]
             return self._send(200, {"object": "list", "model": body.get("model"), "data": [
                 {"object": "embedding", "index": i, "embedding": embed(t)} for i, t in enumerate(texts)]})
+        if self.path == "/v1/rerank":
+            scores = [rerank(body["query"], d) for d in body["documents"]]
+            order = sorted(range(len(scores)), key=lambda i: -scores[i])[:body.get("top_n") or len(scores)]
+            return self._send(200, {"results": [{"index": i, "relevance_score": scores[i]} for i in order]})
         if self.path == "/v1/chat/completions":
             return self._send(200, {"object": "chat.completion", "model": body.get("model"), "choices": [
                 {"index": 0, "finish_reason": "stop",

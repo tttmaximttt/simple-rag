@@ -66,6 +66,24 @@ def test_retrieve_says_which_search_found_each_page(v1, lighthouse, mode):
     assert v1.post("/v1/retrieve", json={"query": "q", "mode": "fuzzy"}).status_code == 422
 
 
+def test_reranker(admin, v1, lighthouse):
+    """The Setup Test button, then retrieval with the reranker on, against the fake /v1/rerank."""
+    api = {"provider": "api", "top_n": 10, "api": {"base_url": FAKE_URL + "/v1", "api_key": "fake", "model": "fake"}}
+    r = admin.post("/api/test/reranker", json={"reranker": api}).json()
+    assert r["ok"] and "ranked the relevant passage first" in r["detail"], r
+    saved = admin.get("/api/config").json()["reranker"]
+    admin.put("/api/config", json={"reranker": api}).raise_for_status()
+    try:
+        results = v1.post("/v1/retrieve", json={"query": "quince trees north slope", "top_k": 2,
+                                                "rewrite": False}).json()["results"]
+        assert (results[0]["doc_id"], results[0]["page"]) == (lighthouse["id"], 2)
+        assert results[0]["rerank_score"] > 0
+    finally:
+        admin.put("/api/config", json={"reranker": {"provider": saved["provider"],
+                                                     "top_n": saved["top_n"]}}).raise_for_status()
+    assert "rerank_score" not in v1.post("/v1/retrieve", json={"query": QUESTION, "rewrite": False}).json()["results"][0]
+
+
 def test_retrieve_finds_the_right_page(v1, lighthouse):
     r = v1.post("/v1/retrieve", json={"query": QUESTION, "top_k": 3})
     assert r.status_code == 200, r.text

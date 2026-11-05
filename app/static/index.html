@@ -122,7 +122,31 @@
     </fieldset>
 
     <fieldset>
-      <legend>4. Retrieval</legend>
+      <legend>4. Reranker <span class="muted small">(optional)</span></legend>
+      <label>Provider
+        <select name="reranker.provider">
+          <option value="off">Off</option>
+          <option value="local">Local cross-encoder (fastembed, CPU, no key)</option>
+          <option value="api">Rerank API (Cohere, Jina, Voyage, vLLM, Infinity, TEI)</option>
+        </select>
+      </label>
+      <div data-show="reranker.provider=local">
+        <label>Model <input name="reranker.local.model"></label>
+        <p class="muted small">Downloaded on first use. The default, bge-reranker-v2-m3 (int8), is multilingual and about 0.6 GB.</p>
+      </div>
+      <div data-show="reranker.provider=api">
+        <label>Base URL <input name="reranker.api.base_url"> <span class="muted small">(POST {base URL}/rerank)</span></label>
+        <label>API key <input name="reranker.api.api_key" type="password"></label>
+        <label>Model <input name="reranker.api.model" data-no-picker></label>
+      </div>
+      <label>Candidates to rerank (top N) <input name="reranker.top_n" type="number" min="1" max="200"></label>
+      <p class="muted small">The reranker re-scores the top N search results against the question before the final
+        Top K. It adds a model call to every search.</p>
+      <button type="button" data-test="reranker">Test</button> <span class="result" id="test-reranker"></span>
+    </fieldset>
+
+    <fieldset>
+      <legend>5. Retrieval</legend>
       <div class="row">
         <label>Chunk size (tokens) <input name="rag.chunk_tokens" type="number" min="32"></label>
         <label>Chunk overlap (tokens) <input name="rag.chunk_overlap_tokens" type="number" min="0"></label>
@@ -256,6 +280,6 @@
   <pre id="events"></pre>
 </section>
 </main>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

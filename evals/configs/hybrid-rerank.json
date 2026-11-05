@@ -1,0 +1,5 @@
+{
+  "description": "Hybrid search, then the local cross-encoder (bge-reranker-v2-m3, int8) re-scores the top 30 candidates. No query rewrite.",
+  "rag": {"query_rewrite": false, "search_mode": "hybrid"},
+  "reranker": {"provider": "local", "top_n": 30}
+}

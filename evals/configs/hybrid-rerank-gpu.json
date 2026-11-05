@@ -1,0 +1,5 @@
+{
+  "description": "Hybrid search, then the local cross-encoder (bge-reranker-v2-m3, fp32) re-scores the top 30 candidates. No query rewrite. For a GPU: the int8 model runs slower on CUDA than on a CPU.",
+  "rag": {"query_rewrite": false, "search_mode": "hybrid"},
+  "reranker": {"provider": "local", "top_n": 30, "local": {"model": "BAAI/bge-reranker-v2-m3"}}
+}

@@ -32,6 +32,13 @@ DEFAULTS = {
         "ollama": {"url": "http://ollama:11434", "model": "llama3.1"},
         "temperature": 0.2,
     },
+    # A cross-encoder that re-scores the top_n fused candidates against the question before the final top_k.
+    "reranker": {
+        "provider": "off",  # off | local | api
+        "top_n": 30,
+        "local": {"model": "BAAI/bge-reranker-v2-m3-int8"},
+        "api": {"base_url": "https://api.cohere.com/v2", "api_key": "", "model": "rerank-v3.5"},
+    },
     # query_rewrite: have the LLM turn each question into search queries in the documents' languages.
     # search_mode: "vector", or "hybrid" to also search by keyword and fuse the two rankings.
     "rag": {"chunk_tokens": 400, "chunk_overlap_tokens": 60, "top_k": 5, "query_rewrite": True,
