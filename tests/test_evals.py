@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from evals import dataset, metrics, run
@@ -163,3 +165,22 @@ def test_counting_llm_treats_an_empty_reply_as_a_failure():
 def test_results_record_the_hardware():
     h = run._hardware()
     assert set(h) == {"os", "cpu", "cores", "gpu", "onnx_providers"} and h["cpu"] and h["cores"] >= 1
+
+
+def test_results_are_written_as_utf8(tmp_path):
+    result = {
+        "date": "2026-11-05", "config": "vector", "description": "Vector · no rewrite", "commit": "abc1234",
+        "setup": {"vector_store": "chroma", "embeddings": "local:m", "llm": "anthropic:m", "chunk_tokens": 400,
+                  "chunk_overlap_tokens": 60, "query_rewrite": False, "search_mode": "vector", "k": 10},
+        "dataset": {"questions": 1, "documents": ["a.pdf"], "ingest_seconds": 1.0},
+        "retrieval": {"questions": 1, "recall@1": 1.0, "recall@5": 1.0, "recall@10": 1.0, "mrr@10": 1.0,
+                      "latency_p50_ms": 5.0, "latency_p95_ms": 5.0, "llm_calls_per_query": 0.0},
+        "by_tag": {}, "answers": None,
+        "questions": [{"id": "q-0", "tags": [], "rank": 1, "top": ["a.pdf p1"]}],
+    }
+    stem = run.write(result, tmp_path, "vector")
+    md = stem.with_suffix(".md").read_bytes()
+    js = stem.with_suffix(".json").read_bytes()
+    assert md == run.markdown(result).encode("utf-8") and "·".encode("utf-8") in md
+    assert js == (json.dumps(result, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
+    assert json.loads(js.decode("utf-8")) == result

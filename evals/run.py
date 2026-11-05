@@ -40,7 +40,7 @@ def load_config(name: str) -> dict:
     if not path.exists():
         names = ", ".join(sorted(p.stem for p in CONFIGS.glob("*.json")))
         raise SystemExit(f"No eval config {name!r} in {CONFIGS} (have: {names})")
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 class CountingLLM:
@@ -96,7 +96,7 @@ def main(argv=None):
     if not args.settings.exists():
         raise SystemExit(f"Settings file {args.settings} not found: pass --settings with a RAG Studio config.json")
     overrides = load_config(args.config)
-    settings = json.loads(args.settings.read_text())
+    settings = json.loads(args.settings.read_text(encoding="utf-8"))
 
     # app.config reads DATA_DIR at import, so point it at a scratch folder first.
     work = Path(tempfile.mkdtemp(prefix="rag-eval-"))
@@ -109,14 +109,22 @@ def main(argv=None):
             shutil.rmtree(work, ignore_errors=True)
         else:
             print(f"kept {work}")
-    stem = f"{date.today().isoformat()}-{args.config}"
-    args.out.mkdir(parents=True, exist_ok=True)
-    if (args.out / f"{stem}.json").exists():  # a second run the same day mustn't replace the first
-        stem += time.strftime("-%H%M%S")
-    (args.out / f"{stem}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
-    (args.out / f"{stem}.md").write_text(markdown(result))
+    path = write(result, args.out, args.config)
     print(markdown(result))
-    print(f"wrote {args.out / stem}.json and .md")
+    print(f"wrote {path}.json and .md")
+
+
+def write(result: dict, out: Path, config: str) -> Path:
+    """Write <date>-<config>.json and .md to out and return their path without the suffix. The bytes are the same
+    on every OS: always UTF-8 (cp1252 on Windows would change the Markdown's "·") with LF line endings."""
+    stem = f"{date.today().isoformat()}-{config}"
+    out.mkdir(parents=True, exist_ok=True)
+    if (out / f"{stem}.json").exists():  # a second run the same day mustn't replace the first
+        stem += time.strftime("-%H%M%S")
+    text = {"json": json.dumps(result, indent=2, ensure_ascii=False) + "\n", "md": markdown(result)}
+    for suffix, body in text.items():
+        (out / f"{stem}.{suffix}").write_text(body, encoding="utf-8", newline="\n")
+    return out / stem
 
 
 def run(args, overrides, settings, work: Path) -> dict:
@@ -254,7 +262,7 @@ def _hardware() -> dict:
             cpu = subprocess.run(["sysctl", "-n", "machdep.cpu.brand_string"], capture_output=True, text=True,
                                  check=True).stdout.strip() or cpu
         elif sys.platform.startswith("linux"):
-            cpu = next((line.split(":", 1)[1].strip() for line in open("/proc/cpuinfo")
+            cpu = next((line.split(":", 1)[1].strip() for line in open("/proc/cpuinfo", encoding="utf-8")
                         if line.startswith("model name")), cpu)
     except (OSError, subprocess.CalledProcessError):
         pass
