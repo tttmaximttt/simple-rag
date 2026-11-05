@@ -267,7 +267,8 @@ def _keyword_missing(cfg) -> int:
     """Stored chunks that hybrid search's keyword half can't find yet (pgvector tables made before it).
     0 when the store can't be reached: the save shouldn't fail on that, and search will say so."""
     try:
-        return stores.get(cfg).keyword_missing()
+        ready = [d["id"] for d in db.rows("SELECT id FROM documents WHERE status='ready'")]
+        return stores.get(cfg).keyword_missing(ready)
     except Exception:  # noqa: BLE001
         return 0
 

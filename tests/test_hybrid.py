@@ -103,9 +103,9 @@ def test_pgvector_migrates_a_table_made_before_hybrid_search(pgvector):
                   "chunk INT, text TEXT, embedding vector(3))")
         c.execute(f"INSERT INTO {pgvector.table} VALUES ('a:0', 'a', 'a.pdf', 1, 0, 'old chunk', '[1,0,0]')")
     assert pgvector.keyword_missing() == 1
-    assert pgvector.keyword_search("old chunk", 5) == []  # adds the columns; the old row has no keywords yet
-    assert pgvector.keyword_missing() == 1
+    assert pgvector.keyword_search("old chunk", 5) == []  # no DDL from a search; the next ingest migrates
     pgvector.ensure(3)
+    assert pgvector.keyword_missing() == 1  # the columns exist now, but the old row has no keywords yet
     with pgvector._conn() as c:
         assert c.execute("SELECT to_regclass(%s)", (pgvector.table + "_tsv",)).fetchone()[0] is not None
     pgvector.upsert([chunk("a", 0, "old chunk, re-indexed")])  # what a re-index does
@@ -229,3 +229,78 @@ def test_unknown_search_mode_is_refused(monkeypatch):
     monkeypatch.setattr(rag.llm, "get", lambda cfg: pytest.fail("no LLM call for a bad mode"))
     with pytest.raises(ValueError, match="Unknown search mode 'fuzzy'"):
         rag.search("q", 5, rewrite_question=True, mode="fuzzy")
+
+
+def test_pgvector_missing_count_ignores_orphans(pgvector):
+    pgvector.ensure(3)
+    pgvector.upsert([chunk("a", 0, "kept"), chunk("gone", 0, "orphan of a deleted document")])
+    with pgvector._conn() as c:
+        c.execute(f"UPDATE {pgvector.table} SET tsv = NULL")  # as if stored before hybrid search
+    assert pgvector.keyword_missing() == 2
+    assert pgvector.keyword_missing(["a"]) == 1  # a re-index can only fix documents that still exist
+
+
+def test_pgvector_concurrent_migrations_dont_collide(pgvector):
+    import threading
+    with pgvector._conn() as c:
+        c.execute(f"CREATE TABLE {pgvector.table} (id TEXT PRIMARY KEY, doc_id TEXT, filename TEXT, page INT, "
+                  "chunk INT, text TEXT, embedding vector(3))")
+    errors = []
+
+    def migrate():
+        try:
+            with pgvector._conn() as c:
+                pgvector._migrate(c)
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=migrate) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+
+
+def test_bm25_serves_the_previous_index_while_rebuilding():
+    import threading
+    key, started, release = ("t", "k"), threading.Event(), threading.Event()
+    assert bm25.search(key, 1, lambda: [{"text": "old words"}], "old", 5)[0]["text"] == "old words"
+    bm25.changed(key)
+
+    def slow_load():
+        started.set()
+        release.wait(5)
+        return [{"text": "new words"}]
+
+    rebuild = threading.Thread(target=lambda: bm25.search(key, 1, slow_load, "new", 5))
+    rebuild.start()
+    assert started.wait(5)
+    # A search during the rebuild neither waits nor rebuilds again: it gets the previous index.
+    assert bm25.search(key, 1, lambda: pytest.fail("second rebuild"), "old", 5)[0]["text"] == "old words"
+    release.set()
+    rebuild.join(5)
+    assert bm25.search(key, 1, lambda: pytest.fail("already rebuilt"), "new", 5)[0]["text"] == "new words"
+
+
+@pytest.mark.usefixtures("docs")
+def test_page_score_is_the_vector_similarity_even_when_negative(monkeypatch):
+    class Store:
+        def search(self, vector, k):
+            return [h("v", 0, -0.3)]
+
+        def keyword_search(self, query, k):
+            return [h("v", 1, 7.0)]  # same page, found by keyword only
+
+    monkeypatch.setattr(rag.embeddings, "get", lambda cfg: Emb())
+    monkeypatch.setattr(rag.stores, "get", lambda cfg: Store())
+    [page] = rag.retrieve("q", 5, mode="hybrid")
+    assert page["score"] == -0.3 and page["found_by"] == ["keyword", "vector"]
+
+
+def test_pgvector_ranks_the_rare_word_above_common_ones(pgvector):
+    pgvector.ensure(3)
+    common = [chunk("a", n, "power supply power supply board power") for n in range(8)]
+    pgvector.upsert(common + [chunk("b", 0, "the power supply for revision a52082")])
+    # Every chunk matches "power supply"; only one has the code, and it must come first.
+    assert pgvector.keyword_search("power supply a52082", 3)[0]["doc_id"] == "b"

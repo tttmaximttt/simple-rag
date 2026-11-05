@@ -70,9 +70,10 @@ class Index:
         return [{**self.payloads[i], "score": s} for i, s in best]
 
 
-_lock = threading.Lock()
+_lock = threading.Lock()  # guards the dicts below; never held while loading or building
 _indexes: dict[tuple, tuple[tuple, Index]] = {}
 _versions: Counter = Counter()
+_building: dict[tuple, threading.Lock] = {}
 
 
 def changed(key: tuple) -> None:
@@ -82,14 +83,28 @@ def changed(key: tuple) -> None:
 
 
 def search(key: tuple, count: int, load, query: str, k: int) -> list[dict]:
-    """Keyword search in the collection `key`, (re)building its index with load() -> payloads when needed."""
+    """Keyword search in the collection `key`, (re)building its index with load() -> payloads when needed.
+
+    One rebuild per collection runs at a time, outside the shared lock. While it runs, other searches use the
+    previous index (a few chunks behind during an ingest) instead of queueing or rebuilding again; only a
+    search with no index at all waits for it."""
     if not count:
         return []
     with _lock:
         signature = (count, _versions[key])
         cached = _indexes.get(key)
-        if cached is None or cached[0] != signature:
-            cached = _indexes[key] = (signature, Index(load()))
+        building = _building.setdefault(key, threading.Lock())
+    if cached is None or cached[0] != signature:
+        if building.acquire(blocking=cached is None):
+            try:
+                with _lock:  # another search may have rebuilt it while this one waited
+                    signature, cached = (count, _versions[key]), _indexes.get(key)
+                if cached is None or cached[0] != signature:
+                    cached = (signature, Index(load()))
+                    with _lock:
+                        _indexes[key] = cached
+            finally:
+                building.release()
     return cached[1].search(query, k)
 
 
@@ -98,3 +113,4 @@ def clear() -> None:
     with _lock:
         _indexes.clear()
         _versions.clear()
+        _building.clear()

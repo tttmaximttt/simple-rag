@@ -363,7 +363,9 @@ def retrieve(question, k=None, queries=(), mode=None):
         text = in_order[0]["text"]
         for prev, c in zip(in_order, in_order[1:]):
             text = _join_overlap(text, c["text"], overlap) if c["chunk"] == prev["chunk"] + 1 else f"{text}\n…\n{c['text']}"
-        hits.append({**chunks[0], "score": max(c["score"] for c in chunks), "chunk": in_order[0]["chunk"], "text": text,
+        # The best cosine similarity among the chunks vector search found; 0.0 if only keyword search found any.
+        similar = [c["score"] for c in chunks if "vector" in c["found_by"]]
+        hits.append({**chunks[0], "score": max(similar, default=0.0), "chunk": in_order[0]["chunk"], "text": text,
                      "found_by": sorted({p for c in chunks for p in c["found_by"]})})
     return hits
 

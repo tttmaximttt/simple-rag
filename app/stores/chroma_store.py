@@ -55,7 +55,7 @@ class ChromaStore:
             if len(batch["ids"]) < LOAD_BATCH:
                 return out
 
-    def keyword_missing(self):
+    def keyword_missing(self, doc_ids=None):
         return 0  # the BM25 sidecar is built from the stored chunks
 
     def delete_doc(self, doc_id):

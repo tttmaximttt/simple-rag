@@ -1,4 +1,5 @@
 import hashlib
+import math
 import re
 
 import psycopg
@@ -86,10 +87,13 @@ class PgVectorStore:
     def _migrate(self, c):
         """Add the keyword columns and index to a table made before hybrid search. Its rows have no keyword
         data (tsv is NULL) until they're re-indexed; keyword_missing() counts them."""
-        if not self._has_keywords(c):
-            c.execute(f"ALTER TABLE {self.table} ADD COLUMN IF NOT EXISTS ts_config TEXT, "
-                      "ADD COLUMN IF NOT EXISTS tsv tsvector")
-        c.execute(f"CREATE INDEX IF NOT EXISTS {self.table}{TSV_SUFFIX} ON {self.table} USING gin (tsv)")
+        with c.transaction():
+            # Two ingests (or app instances) migrating at once would collide on CREATE INDEX IF NOT EXISTS.
+            c.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (self.table,))
+            if not self._has_keywords(c):
+                c.execute(f"ALTER TABLE {self.table} ADD COLUMN IF NOT EXISTS ts_config TEXT, "
+                          "ADD COLUMN IF NOT EXISTS tsv tsvector")
+            c.execute(f"CREATE INDEX IF NOT EXISTS {self.table}{TSV_SUFFIX} ON {self.table} USING gin (tsv)")
 
     def upsert(self, items):
         import numpy as np
@@ -120,31 +124,58 @@ class PgVectorStore:
 
     def keyword_search(self, query, k):
         """Full-text search: the query is parsed with each text-search configuration and matched against the
-        chunks stored with that configuration, any of its words counting (OR), ranked by ts_rank_cd."""
+        chunks stored with that configuration, any of its words counting (OR).
+
+        Matches are scored like BM25's IDF part: each query word a chunk contains adds log(1 + (N - df + 0.5) /
+        (df + 0.5)), with N and df counted among the chunks of that configuration. ts_rank_cd alone weighs
+        every word the same, so a chunk full of common words beat the one with a rare code or name, which is
+        what keyword search is for. It still breaks ties."""
+        configs = [*TS_CONFIGS.values(), "simple"]
         with self._conn() as c:
-            if not self._exists(c):
+            # A table made before hybrid search gets its keyword columns from ensure() at the next (re-)index;
+            # a search doesn't run DDL.
+            if not self._exists(c) or not self._has_keywords(c):
                 return []
-            if not self._has_keywords(c):
-                self._migrate(c)
+            # Each configuration's lexemes of the query, with how many chunks of that configuration hold each
+            # (GIN lookups) and how many chunks it has in all.
+            stats = c.execute(
+                f"""WITH words AS (
+                        SELECT DISTINCT cfg, lex
+                        FROM unnest(%s::text[]) AS cfg,
+                             unnest(tsvector_to_array(to_tsvector(cfg::regconfig, %s))) AS lex)
+                    SELECT w.cfg, w.lex,
+                           (SELECT COUNT(*) FROM {self.table} t
+                            WHERE t.ts_config = w.cfg AND t.tsv @@ quote_literal(w.lex)::tsquery) AS df,
+                           (SELECT COUNT(*) FROM {self.table} t WHERE t.ts_config = w.cfg) AS n
+                    FROM words w""", (configs, query)).fetchall()
+            stats = [(cfg, lex, math.log(1 + (n - df + 0.5) / (df + 0.5))) for cfg, lex, df, n in stats if df]
+            if not stats:
+                return []
+            cfgs, lexes, weights = (list(x) for x in zip(*stats))
             rows = c.execute(
-                f"""WITH q AS (
-                        SELECT cfg, replace(plainto_tsquery(cfg::regconfig, %s)::text, ' & ', ' | ') AS qt
-                        FROM unnest(%s::text[]) AS cfg)
-                    SELECT t.doc_id, t.filename, t.page, t.chunk, t.text, ts_rank_cd(t.tsv, q.qt::tsquery) AS score
+                f"""WITH w AS (SELECT * FROM unnest(%s::text[], %s::text[], %s::float8[]) AS w(cfg, lex, idf)),
+                    q AS (SELECT cfg, string_agg(quote_literal(lex), ' | ')::tsquery AS qt FROM w GROUP BY cfg)
+                    SELECT t.doc_id, t.filename, t.page, t.chunk, t.text,
+                           (SELECT SUM(w.idf) FROM w WHERE w.cfg = t.ts_config
+                            AND t.tsv @@ quote_literal(w.lex)::tsquery) AS score
                     FROM {self.table} t JOIN q ON t.ts_config = q.cfg
-                    WHERE q.qt <> '' AND t.tsv @@ q.qt::tsquery
-                    ORDER BY score DESC, t.id LIMIT %s""", (query, [*TS_CONFIGS.values(), "simple"], k)).fetchall()
+                    WHERE t.tsv @@ q.qt
+                    ORDER BY score DESC, ts_rank_cd(t.tsv, q.qt) DESC, t.id LIMIT %s""",
+                (cfgs, lexes, weights, k)).fetchall()
         keys = ("doc_id", "filename", "page", "chunk", "text", "score")
         return [dict(zip(keys, r)) for r in rows]
 
-    def keyword_missing(self):
-        """Chunks stored before hybrid search, which keyword search can't find until they're re-indexed."""
+    def keyword_missing(self, doc_ids=None):
+        """Chunks stored before hybrid search, which keyword search can't find until they're re-indexed. With
+        doc_ids, only those documents' chunks count: orphans of deleted documents can't be re-indexed."""
         with self._conn() as c:
             if not self._exists(c):
                 return 0
-            if not self._has_keywords(c):
-                return c.execute(f"SELECT COUNT(*) FROM {self.table}").fetchone()[0]
-            return c.execute(f"SELECT COUNT(*) FROM {self.table} WHERE tsv IS NULL").fetchone()[0]
+            where = "tsv IS NULL" if self._has_keywords(c) else "TRUE"  # no keyword columns yet: every row
+            args = ()
+            if doc_ids is not None:
+                where, args = f"{where} AND doc_id = ANY(%s)", (list(doc_ids),)
+            return c.execute(f"SELECT COUNT(*) FROM {self.table} WHERE {where}", args).fetchone()[0]
 
     def delete_doc(self, doc_id):
         with self._conn() as c:
