@@ -6,6 +6,8 @@ retrieval (hybrid search, reranking, chunking) can be compared with numbers inst
 ```bash
 python -m evals.run --config vector --settings data/config.json            # current vector search
 python -m evals.run --config vector-rewrite --settings data/config.json    # with the LLM query rewrite
+python -m evals.run --config hybrid --settings data/config.json            # vector + keyword, fused by RRF
+python -m evals.run --config hybrid-rewrite --settings data/config.json    # hybrid with the query rewrite
 python -m evals.run --config vector --settings data/config.json --answers  # also score generated answers
 python -m pytest tests/test_evals.py -q                                    # metric tests and label checks
 ```
