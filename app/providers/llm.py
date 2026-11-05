@@ -12,8 +12,17 @@ class AnthropicLLM:
     def complete(self, system, user):
         body = {"model": self.model, "max_tokens": 2048, "system": system,
                 "messages": [{"role": "user", "content": user}]}
-        r = _post_with_temperature(("anthropic", "", self.model), body, self.temperature, self._post)
-        return "".join(b.get("text", "") for b in r.json()["content"])
+        for _ in range(EMPTY_REPLY_ATTEMPTS):
+            reply = _post_with_temperature(("anthropic", "", self.model), body, self.temperature, self._post).json()
+            if reply.get("stop_reason") == "refusal":
+                category = (reply.get("stop_details") or {}).get("category")
+                raise RuntimeError(f"{self.model} declined the request" + (f" ({category})" if category else ""))
+            text = "".join(b.get("text", "") for b in reply.get("content", []) if b.get("type", "text") == "text")
+            # Models that think by default (Claude Sonnet 5.5, Opus 5.5) sometimes end the turn after a thinking
+            # block with no text at all; asking again almost always gets an answer.
+            if text.strip() or reply.get("stop_reason") != "end_turn":
+                return text
+        raise RuntimeError(f"{self.model} returned no text in {EMPTY_REPLY_ATTEMPTS} attempts")
 
     def _post(self, body):
         return post_with_retry("https://api.anthropic.com/v1/messages", timeout=180, headers=self.headers, json=body)
@@ -47,6 +56,7 @@ class OpenAILLM:
 # (provider, base_url, model) seen rejecting the temperature parameter: newer Claude models ("`temperature` is
 # deprecated for this model") and OpenAI's reasoning models ("Unsupported value: 'temperature' ...").
 _DEFAULT_TEMPERATURE_ONLY: set[tuple[str, str, str]] = set()
+EMPTY_REPLY_ATTEMPTS = 3
 _REJECTS_TEMPERATURE = ("deprecated", "unsupported", "not supported", "does not support")
 
 

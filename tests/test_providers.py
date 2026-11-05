@@ -148,3 +148,37 @@ def test_ollama_embeddings_retry_transient_errors(monkeypatch):
     replies = [httpx.Response(503, request=REQ), httpx.Response(200, json={"embeddings": [[1.0]]}, request=REQ)]
     monkeypatch.setattr(providers.httpx, "post", lambda url, **kw: replies.pop(0))
     assert embeddings.OllamaEmbeddings("http://o", "m").embed(["a"]) == [[1.0]]
+
+
+def _anthropic_replies(monkeypatch, replies):
+    monkeypatch.setattr(llm, "_DEFAULT_TEMPERATURE_ONLY", set())
+    areq = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    sent = []
+    monkeypatch.setattr(llm.httpx, "post", lambda url, json, **kw: sent.append(1) or httpx.Response(
+        200, json=replies.pop(0), request=areq))
+    return sent
+
+
+def test_anthropic_asks_again_after_a_thinking_only_reply(monkeypatch):
+    thinking_only = {"stop_reason": "end_turn", "content": [{"type": "thinking", "thinking": ""}]}
+    answer = {"stop_reason": "end_turn", "content": [{"type": "thinking", "thinking": ""},
+                                                     {"type": "text", "text": "ok"}]}
+    sent = _anthropic_replies(monkeypatch, [thinking_only, answer])
+    assert llm.AnthropicLLM("k", "claude-sonnet-5-5", 0.2).complete("s", "u") == "ok"
+    assert len(sent) == 2
+
+
+def test_anthropic_gives_up_on_replies_that_stay_empty(monkeypatch):
+    thinking_only = {"stop_reason": "end_turn", "content": [{"type": "thinking", "thinking": ""}]}
+    sent = _anthropic_replies(monkeypatch, [thinking_only] * llm.EMPTY_REPLY_ATTEMPTS)
+    with pytest.raises(RuntimeError, match="returned no text in 3 attempts"):
+        llm.AnthropicLLM("k", "claude-sonnet-5-5", 0.2).complete("s", "u")
+    assert len(sent) == llm.EMPTY_REPLY_ATTEMPTS
+
+
+def test_anthropic_refusal_is_an_error(monkeypatch):
+    refusal = {"stop_reason": "refusal", "stop_details": {"type": "refusal", "category": "cyber"}, "content": []}
+    sent = _anthropic_replies(monkeypatch, [refusal])
+    with pytest.raises(RuntimeError, match=r"declined the request \(cyber\)"):
+        llm.AnthropicLLM("k", "claude-sonnet-5-5", 0.2).complete("s", "u")
+    assert len(sent) == 1
