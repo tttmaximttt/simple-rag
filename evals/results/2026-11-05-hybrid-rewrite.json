@@ -2,7 +2,7 @@
   "date": "2026-11-05",
   "config": "hybrid-rewrite",
   "description": "Hybrid search with the LLM query rewrite: every rewritten query is searched by vector and keyword.",
-  "commit": "ff4641a",
+  "commit": "fdd7c03",
   "setup": {
     "vector_store": "chroma",
     "embeddings": "local:BAAI/bge-small-en-v1.5",
@@ -11,7 +11,19 @@
     "chunk_overlap_tokens": 60,
     "query_rewrite": true,
     "search_mode": "hybrid",
-    "k": 10
+    "k": 10,
+    "reranker": "off",
+    "hardware": {
+      "os": "Windows-11",
+      "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+      "cores": 32,
+      "gpu": "NVIDIA GeForce RTX 4080",
+      "onnx_providers": [
+        "TensorrtExecutionProvider",
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ]
+    }
   },
   "dataset": {
     "questions": 66,
@@ -21,27 +33,27 @@
       "pep8-style-guide.pdf",
       "raspberry-pi-hardware.pdf"
     ],
-    "ingest_seconds": 42.4
+    "ingest_seconds": 8.3
   },
   "retrieval": {
     "questions": 66,
     "recall@1": 0.6212,
-    "recall@5": 0.9394,
+    "recall@5": 0.9545,
     "recall@10": 0.9848,
-    "mrr@10": 0.7662,
-    "latency_p50_ms": 2010.8,
-    "latency_p95_ms": 2952.4,
+    "mrr@10": 0.7628,
+    "latency_p50_ms": 2157.0,
+    "latency_p95_ms": 2684.2,
     "llm_calls_per_query": 1.0
   },
   "by_tag": {
     "cross-language": {
       "questions": 19,
       "recall@1": 0.5263,
-      "recall@5": 0.8947,
+      "recall@5": 0.9474,
       "recall@10": 1.0,
-      "mrr@10": 0.6988,
-      "latency_p50_ms": 2079.1,
-      "latency_p95_ms": 2645.6,
+      "mrr@10": 0.7,
+      "latency_p50_ms": 2224.6,
+      "latency_p95_ms": 2931.4,
       "llm_calls_per_query": 1.0
     },
     "exact": {
@@ -50,8 +62,8 @@
       "recall@5": 0.9259,
       "recall@10": 0.963,
       "mrr@10": 0.7522,
-      "latency_p50_ms": 2007.2,
-      "latency_p95_ms": 3034.4,
+      "latency_p50_ms": 2146.3,
+      "latency_p95_ms": 3021.3,
       "llm_calls_per_query": 1.0
     },
     "untagged": {
@@ -59,9 +71,9 @@
       "recall@1": 0.6786,
       "recall@5": 1.0,
       "recall@10": 1.0,
-      "mrr@10": 0.8089,
-      "latency_p50_ms": 1984.6,
-      "latency_p95_ms": 2815.0,
+      "mrr@10": 0.8,
+      "latency_p50_ms": 2113.9,
+      "latency_p95_ms": 2449.2,
       "llm_calls_per_query": 1.0
     }
   },
@@ -73,12 +85,12 @@
         "exact"
       ],
       "rank": 7,
-      "latency_ms": 2014.8,
+      "latency_ms": 2136.6,
       "llm_calls": 1,
       "queries": [
         "a52082 board revision code manufacturer",
         "código de revisión a52082 placa fabricante",
-        "revision code a52082 Raspberry Pi board revision",
+        "a52082 revision code Raspberry Pi board model",
         "código de revisión de la placa a52082 modelo y fabricante"
       ],
       "top": [
@@ -95,19 +107,19 @@
         "exact"
       ],
       "rank": null,
-      "latency_ms": 1358.9,
+      "latency_ms": 1611.2,
       "llm_calls": 1,
       "queries": [
         "revision code 902120 model",
         "código de revisión 902120 modelo",
-        "revision code model identification label",
-        "código de revisión identificación del modelo placa de características"
+        "número de revisión del modelo 902120",
+        "revision number model identification 902120"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p9",
         "raspberry-pi-hardware.pdf p6",
-        "raspberry-pi-hardware.pdf p8",
         "raspberry-pi-hardware.pdf p4",
+        "raspberry-pi-hardware.pdf p5",
         "raspberry-pi-hardware.pdf p10"
       ]
     },
@@ -117,53 +129,53 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 2850.6,
+      "latency_ms": 1675.3,
       "llm_calls": 1,
       "queries": [
-        "OTP register 28 non-BCM2712 devices",
-        "OTP registers Raspberry Pi vcgencmd otp_dump row 28",
-        "registro OTP 28 dispositivos distintos de BCM2712",
-        "registros OTP volcado fila 28 número de serie comprobación"
+        "OTP register 28 contents non-BCM2712 devices",
+        "OTP registers 28 board revision serial number",
+        "registro OTP 28 dispositivos no BCM2712",
+        "registros OTP memoria programable una sola vez contenido registro 28"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p10",
         "raspberry-pi-hardware.pdf p11",
         "raspberry-pi-hardware.pdf p5",
         "nist-sp800-63b.pdf p14",
-        "nist-sp800-63b.pdf p15"
+        "nist-sp800-63b.pdf p13"
       ]
     },
     {
       "id": "rpi-04",
       "tags": [],
       "rank": 1,
-      "latency_ms": 1623.6,
+      "latency_ms": 2060.1,
       "llm_calls": 1,
       "queries": [
         "Raspberry Pi 5 halt power consumption reduce",
-        "POWER_OFF_ON_HALT WAKE_ON_GPIO EEPROM bootloader configuration",
-        "consumo de energía en estado apagado reducir",
-        "configuración del gestor de arranque EEPROM apagado consumo en reposo"
+        "POWER_OFF_ON_HALT WAKE_ON_GPIO EEPROM configuration",
+        "reducir consumo de energía en estado apagado (halt)",
+        "configuración bootloader EEPROM POWER_OFF_ON_HALT consumo en reposo"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p3",
         "raspberry-pi-hardware.pdf p16",
         "raspberry-pi-hardware.pdf p15",
-        "raspberry-pi-hardware.pdf p10",
-        "raspberry-pi-hardware.pdf p2"
+        "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p13"
       ]
     },
     {
       "id": "rpi-05",
       "tags": [],
       "rank": 1,
-      "latency_ms": 2458.2,
+      "latency_ms": 2228.7,
       "llm_calls": 1,
       "queries": [
         "recommended power supply current 5V 3A USB-C",
-        "power supply requirements specification",
+        "power requirements specification supply current",
         "fuente de alimentación recomendada 5 V 3 A USB-C",
-        "requisitos de alimentación corriente mínima"
+        "requisitos de alimentación corriente de la fuente"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p1",
@@ -179,13 +191,13 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 1813.7,
+      "latency_ms": 1875.5,
       "llm_calls": 1,
       "queries": [
         "low-voltage warning threshold supply voltage",
-        "undervoltage alarm trigger level",
-        "aviso de baja tensión umbral de tensión de alimentación",
-        "alarma de subtensión nivel de activación"
+        "undervoltage alarm trigger voltage",
+        "advertencia de baja tensión umbral de tensión de alimentación",
+        "alarma de subtensión tensión de disparo"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p4",
@@ -199,13 +211,13 @@
       "id": "rpi-07",
       "tags": [],
       "rank": 1,
-      "latency_ms": 2237.4,
+      "latency_ms": 2204.7,
       "llm_calls": 1,
       "queries": [
         "Raspberry Pi 5 active cooler fan speed temperature thresholds",
-        "fan full speed temperature cooling fan trip points",
-        "temperatura ventilador velocidad máxima umbral de temperatura",
-        "ventilador de refrigeración activo velocidad completa grados Celsius"
+        "fan full speed temperature cooling fan control",
+        "velocidad del ventilador temperatura umbral refrigeración activa",
+        "temperatura a la que el ventilador funciona a máxima velocidad"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p14",
@@ -219,13 +231,13 @@
       "id": "rpi-08",
       "tags": [],
       "rank": 1,
-      "latency_ms": 2956.6,
+      "latency_ms": 2678.7,
       "llm_calls": 1,
       "queries": [
         "Raspberry Pi 3 Model B+ soft temperature limit default 60°C",
         "temp_soft_limit config.txt thermal throttling",
-        "límite de temperatura suave predeterminado 60 °C",
-        "cómo cambiar temp_soft_limit en config.txt limitación térmica"
+        "límite de temperatura suave por defecto configuración config.txt",
+        "cómo cambiar el límite térmico temp_soft_limit"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p12",
@@ -241,20 +253,20 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 1901.8,
+      "latency_ms": 1851.1,
       "llm_calls": 1,
       "queries": [
         "dvfs=2 parameter setting",
-        "dynamic voltage and frequency scaling DVFS modes",
+        "dynamic voltage and frequency scaling DVFS mode options",
         "parámetro dvfs=2 escalado dinámico de voltaje y frecuencia",
-        "configuración DVFS modo 2"
+        "configuración DVFS modos de escalado de frecuencia"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p13",
         "raspberry-pi-hardware.pdf p12",
         "raspberry-pi-hardware.pdf p5",
         "raspberry-pi-hardware.pdf p6",
-        "mdn-http-es.pdf p37"
+        "mdn-http-es.pdf p36"
       ]
     },
     {
@@ -263,20 +275,20 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 1829.2,
+      "latency_ms": 2070.3,
       "llm_calls": 1,
       "queries": [
         "Raspberry Pi 5 RTC battery connector",
-        "J5 battery connector real-time clock backup",
+        "Raspberry Pi 5 J5 battery connector real-time clock",
         "conector de batería RTC Raspberry Pi 5",
-        "conector para batería de respaldo del reloj en tiempo real"
+        "conector para batería del reloj en tiempo real"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p16",
         "raspberry-pi-hardware.pdf p14",
         "raspberry-pi-hardware.pdf p2",
         "raspberry-pi-hardware.pdf p1",
-        "raspberry-pi-hardware.pdf p15"
+        "raspberry-pi-hardware.pdf p3"
       ]
     },
     {
@@ -285,40 +297,40 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 1973.8,
+      "latency_ms": 2385.0,
       "llm_calls": 1,
       "queries": [
-        "PoE standard supported Ethernet port PoE+ IEEE 802.3at",
-        "PoE HAT Ethernet connector power over Ethernet",
-        "estándar PoE compatible puerto Ethernet IEEE 802.3af/at",
-        "conector Ethernet con soporte para alimentación a través de Ethernet (PoE)"
+        "PoE standard supported by Ethernet port, IEEE 802.3af/at",
+        "PoE+ HAT compatibility, Power over Ethernet header",
+        "estándar PoE compatible con el puerto Ethernet, IEEE 802.3af/at",
+        "conector Ethernet con soporte para Power over Ethernet (PoE+), HAT PoE"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p1",
         "raspberry-pi-hardware.pdf p3",
         "raspberry-pi-hardware.pdf p11",
         "raspberry-pi-hardware.pdf p2",
-        "mdn-http-es.pdf p11"
+        "raspberry-pi-hardware.pdf p4"
       ]
     },
     {
       "id": "rpi-12",
       "tags": [],
       "rank": 1,
-      "latency_ms": 1618.9,
+      "latency_ms": 1506.0,
       "llm_calls": 1,
       "queries": [
-        "external power button Raspberry Pi 5 J2 connector",
-        "Raspberry Pi 5 power button wiring GPIO3 shutdown wake",
-        "botón de encendido externo conector J2 placa",
-        "conectar pulsador de apagado y encendido a los pines GPIO"
+        "Raspberry Pi 5 external power button J2 connector",
+        "Raspberry Pi 5 power button wiring GPIO3 wake from halt",
+        "conectar pulsador de encendido externo Raspberry Pi 5",
+        "Raspberry Pi 5 conector J2 botón de encendido apagado"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p16",
         "raspberry-pi-hardware.pdf p2",
-        "raspberry-pi-hardware.pdf p11",
-        "raspberry-pi-hardware.pdf p14",
-        "raspberry-pi-hardware.pdf p13"
+        "raspberry-pi-hardware.pdf p1",
+        "raspberry-pi-hardware.pdf p3",
+        "raspberry-pi-hardware.pdf p14"
       ]
     },
     {
@@ -327,19 +339,19 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 1599.4,
+      "latency_ms": 1816.3,
       "llm_calls": 1,
       "queries": [
-        "revision code warranty void bit overclocking",
-        "warranty status flag in revision code",
-        "código de revisión bit de garantía anulada por overclocking",
-        "indicador de garantía anulada en código de revisión nuevo estilo"
+        "revision code warranty void overclocking bit",
+        "new-style revision code field definitions",
+        "overclock OTP bit warranty void",
+        "código de revisión bit de garantía anulada por overclocking"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p5",
         "raspberry-pi-hardware.pdf p6",
-        "raspberry-pi-hardware.pdf p9",
         "raspberry-pi-hardware.pdf p10",
+        "raspberry-pi-hardware.pdf p9",
         "raspberry-pi-hardware.pdf p8"
       ]
     },
@@ -347,19 +359,19 @@
       "id": "rpi-14",
       "tags": [],
       "rank": 1,
-      "latency_ms": 2141.2,
+      "latency_ms": 2371.1,
       "llm_calls": 1,
       "queries": [
         "Raspberry Pi 5 fan connector pinout",
-        "Raspberry Pi 5 active cooler 4-pin JST-SH header PWM tachometer",
-        "distribución de pines del conector del ventilador de la Raspberry Pi 5",
-        "asignación de pines conector ventilador 4 pines PWM 5 V GND"
+        "Raspberry Pi 5 4-pin JST-SH fan header PWM tach",
+        "conector del ventilador Raspberry Pi 5 asignación de pines",
+        "distribución de pines conector ventilador 4 pines PWM 5 V GND tacómetro"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p14",
         "raspberry-pi-hardware.pdf p13",
-        "raspberry-pi-hardware.pdf p3",
         "raspberry-pi-hardware.pdf p2",
+        "raspberry-pi-hardware.pdf p3",
         "raspberry-pi-hardware.pdf p1"
       ]
     },
@@ -367,33 +379,33 @@
       "id": "rpi-15",
       "tags": [],
       "rank": 1,
-      "latency_ms": 2055.3,
+      "latency_ms": 1921.0,
       "llm_calls": 1,
       "queries": [
-        "SoC temperature measurement accuracy",
-        "on-die temperature sensor calibration",
-        "lectura de temperatura del SoC",
-        "sensor de temperatura integrado calibración precisión"
+        "SoC temperature sensor accuracy calibration",
+        "on-die thermal sensor reading procedure",
+        "sensor de temperatura del SoC precisión calibración",
+        "lectura de temperatura del procesador sensor térmico"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p13",
         "raspberry-pi-hardware.pdf p12",
         "raspberry-pi-hardware.pdf p14",
         "raspberry-pi-hardware.pdf p3",
-        "raspberry-pi-hardware.pdf p4"
+        "nist-sp800-63b.pdf p20"
       ]
     },
     {
       "id": "rpi-16",
       "tags": [],
       "rank": 1,
-      "latency_ms": 1744.5,
+      "latency_ms": 2193.6,
       "llm_calls": 1,
       "queries": [
-        "RTC battery charger charging current",
-        "RTC backup battery charge current specification",
+        "RTC battery charging current",
+        "RTC backup battery charger current specification",
         "corriente de carga de la batería del RTC",
-        "cargador de batería de respaldo del reloj en tiempo real corriente de carga"
+        "corriente de carga batería de respaldo reloj de tiempo real"
       ],
       "top": [
         "raspberry-pi-hardware.pdf p15",
@@ -407,13 +419,13 @@
       "id": "nist-01",
       "tags": [],
       "rank": 4,
-      "latency_ms": 1894.0,
+      "latency_ms": 1928.0,
       "llm_calls": 1,
       "queries": [
         "minimum password length user-defined",
-        "minimum number of characters for user password",
+        "password requirements minimum number of characters",
         "longitud mínima de la contraseña definida por el usuario",
-        "número mínimo de caracteres de la contraseña de usuario"
+        "requisitos de contraseña número mínimo de caracteres"
       ],
       "top": [
         "nist-sp800-63b.pdf p27",
@@ -429,19 +441,19 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 2213.2,
+      "latency_ms": 2401.3,
       "llm_calls": 1,
       "queries": [
-        "maximum password length verifiers should permit",
-        "password length requirements memorized secrets verifier at least 64 characters",
+        "verifier maximum password length user-chosen memorized secrets",
         "longitud máxima de contraseñas permitida por el verificador",
-        "requisitos de longitud de contraseña secretos memorizados mínimo 8 caracteres máximo 64"
+        "NIST SP 800-63B memorized secret length requirements",
+        "longitud mínima y máxima de secretos memorizados, al menos 64 caracteres"
       ],
       "top": [
         "nist-sp800-63b.pdf p27",
         "nist-sp800-63b.pdf p8",
-        "nist-sp800-63b.pdf p29",
         "nist-sp800-63b.pdf p18",
+        "nist-sp800-63b.pdf p29",
         "nist-sp800-63b.pdf p9"
       ]
     },
@@ -449,19 +461,19 @@
       "id": "nist-03",
       "tags": [],
       "rank": 5,
-      "latency_ms": 1941.3,
+      "latency_ms": 2319.1,
       "llm_calls": 1,
       "queries": [
         "AAL2 reauthentication inactivity timeout",
         "AAL2 session management reauthentication after 30 minutes of inactivity",
         "NIST SP 800-63B AAL2 reautenticación por inactividad",
-        "nivel de garantía de autenticador 2 tiempo de inactividad cierre de sesión reautenticación"
+        "nivel de garantía del autenticador 2 cierre de sesión por tiempo de inactividad"
       ],
       "top": [
         "nist-sp800-63b.pdf p26",
         "nist-sp800-63b.pdf p3",
-        "nist-sp800-63b.pdf p5",
         "mdn-http-es.pdf p11",
+        "nist-sp800-63b.pdf p5",
         "nist-sp800-63b.pdf p4"
       ]
     },
@@ -469,20 +481,20 @@
       "id": "nist-04",
       "tags": [],
       "rank": 2,
-      "latency_ms": 2206.8,
+      "latency_ms": 2382.3,
       "llm_calls": 1,
       "queries": [
         "AAL3 inactivity timeout reauthentication NIST SP 800-63B",
         "authenticator assurance level 3 session inactivity timeout 15 minutes",
-        "tiempo de inactividad AAL3 cierre de sesión reautenticación",
-        "nivel de garantía del autenticador 3 tiempo de espera por inactividad"
+        "tiempo de inactividad de sesión nivel de garantía del autenticador AAL3",
+        "cierre de sesión por inactividad y reautenticación AAL3"
       ],
       "top": [
         "nist-sp800-63b.pdf p4",
         "nist-sp800-63b.pdf p5",
         "mdn-http-es.pdf p11",
-        "nist-sp800-63b.pdf p3",
-        "nist-sp800-63b.pdf p24"
+        "nist-sp800-63b.pdf p26",
+        "nist-sp800-63b.pdf p3"
       ]
     },
     {
@@ -491,12 +503,12 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 1745.5,
+      "latency_ms": 1810.4,
       "llm_calls": 1,
       "queries": [
         "maximum number of consecutive failed login attempts",
         "account lockout threshold",
-        "número máximo de intentos de inicio de sesión fallidos consecutivos",
+        "número máximo de intentos fallidos de inicio de sesión consecutivos",
         "bloqueo de cuenta por intentos fallidos de acceso"
       ],
       "top": [
@@ -513,12 +525,12 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 1888.3,
+      "latency_ms": 2112.3,
       "llm_calls": 1,
       "queries": [
         "out-of-band authentication time limit minutes",
-        "out-of-band authenticator code expiration lifetime",
-        "autenticación fuera de banda tiempo máximo de validez en minutos",
+        "out-of-band authenticator code validity period expiration",
+        "autenticación fuera de banda tiempo máximo en minutos",
         "caducidad del código de autenticación fuera de banda"
       ],
       "top": [
@@ -526,20 +538,20 @@
         "nist-sp800-63b.pdf p11",
         "nist-sp800-63b.pdf p2",
         "nist-sp800-63b.pdf p7",
-        "nist-sp800-63b.pdf p13"
+        "nist-sp800-63b.pdf p5"
       ]
     },
     {
       "id": "nist-07",
       "tags": [],
       "rank": 2,
-      "latency_ms": 1419.0,
+      "latency_ms": 1556.3,
       "llm_calls": 1,
       "queries": [
         "minimum salt length for password hashing",
         "salt length requirements for stored passwords",
         "longitud mínima de la sal para almacenamiento de contraseñas",
-        "longitud del salt en hash de contraseñas"
+        "tamaño del salt en hash de contraseñas"
       ],
       "top": [
         "nist-sp800-63b.pdf p28",
@@ -555,13 +567,13 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 2007.2,
+      "latency_ms": 2056.4,
       "llm_calls": 1,
       "queries": [
         "recommended PBKDF2 iteration count",
-        "PBKDF2 iterations OWASP password storage",
+        "PBKDF2 iterations password hashing OWASP NIST SP 800-132",
         "número de iteraciones recomendado PBKDF2",
-        "derivación de claves PBKDF2 recuento de iteraciones recomendado"
+        "PBKDF2 número de iteraciones almacenamiento de contraseñas derivación de claves"
       ],
       "top": [
         "nist-sp800-63b.pdf p9",
@@ -575,19 +587,19 @@
       "id": "nist-09",
       "tags": [],
       "rank": 1,
-      "latency_ms": 2145.6,
+      "latency_ms": 2021.6,
       "llm_calls": 1,
       "queries": [
         "look-up secrets minimum entropy requirements",
-        "lookup secret authenticator entropy bits",
+        "look-up secret authenticator entropy bits",
         "secretos de búsqueda entropía mínima requerida",
-        "autenticador de secreto de búsqueda entropía bits"
+        "autenticador de secreto de consulta entropía"
       ],
       "top": [
         "nist-sp800-63b.pdf p10",
         "nist-sp800-63b.pdf p27",
-        "nist-sp800-63b.pdf p18",
         "nist-sp800-63b.pdf p22",
+        "nist-sp800-63b.pdf p7",
         "nist-sp800-63b.pdf p15"
       ]
     },
@@ -597,39 +609,39 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 3113.2,
+      "latency_ms": 2205.9,
       "llm_calls": 1,
       "queries": [
-        "false match rate (FMR) requirement biometric system",
-        "false acceptance rate FAR threshold biometric verification performance",
+        "false match rate FMR requirement biometric system",
+        "false acceptance rate FAR threshold biometric verification",
         "tasa de falsa coincidencia (FMR) requerida sistema biométrico",
-        "tasa de falsa aceptación (FAR) requisitos de rendimiento biométrico"
+        "tasa de falsa aceptación (FAR) umbral verificación biométrica"
       ],
       "top": [
         "nist-sp800-63b.pdf p20",
         "nist-sp800-63b.pdf p19",
         "nist-sp800-63b.pdf p21",
         "nist-sp800-63b.pdf p18",
-        "nist-sp800-63b.pdf p3"
+        "nist-sp800-63b.pdf p15"
       ]
     },
     {
       "id": "nist-11",
       "tags": [],
       "rank": 1,
-      "latency_ms": 1583.0,
+      "latency_ms": 1876.5,
       "llm_calls": 1,
       "queries": [
         "maximum number of consecutive failed biometric attempts",
-        "failed fingerprint attempts lockout limit",
-        "número máximo de intentos biométricos fallidos consecutivos",
+        "fingerprint authentication failed attempts lockout",
+        "número máximo de intentos fallidos consecutivos de autenticación biométrica",
         "bloqueo por intentos fallidos de huella digital"
       ],
       "top": [
         "nist-sp800-63b.pdf p20",
         "nist-sp800-63b.pdf p19",
-        "nist-sp800-63b.pdf p27",
         "nist-sp800-63b.pdf p21",
+        "nist-sp800-63b.pdf p27",
         "nist-sp800-63b.pdf p18"
       ]
     },
@@ -637,39 +649,39 @@
       "id": "nist-12",
       "tags": [],
       "rank": 1,
-      "latency_ms": 3484.6,
+      "latency_ms": 2447.6,
       "llm_calls": 1,
       "queries": [
         "time-based one-time password time step interval",
         "TOTP time step size 30 seconds RFC 6238",
-        "contraseña de un solo uso basada en tiempo intervalo de tiempo",
-        "TOTP período de validez del código RFC 6238"
+        "contraseña de un solo uso basada en tiempo (TOTP) intervalo de tiempo",
+        "TOTP periodo de validez del código y paso de tiempo"
       ],
       "top": [
         "nist-sp800-63b.pdf p15",
         "nist-sp800-63b.pdf p14",
-        "mdn-http-es.pdf p21",
+        "mdn-http-es.pdf p22",
         "nist-sp800-63b.pdf p27",
-        "mdn-http-es.pdf p22"
+        "mdn-http-es.pdf p11"
       ]
     },
     {
       "id": "nist-13",
       "tags": [],
       "rank": 5,
-      "latency_ms": 1986.1,
+      "latency_ms": 2336.6,
       "llm_calls": 1,
       "queries": [
-        "SMS one-time password delivery for authentication",
-        "SMS OTP two-factor authentication security",
-        "contraseña de un solo uso por SMS",
-        "código de verificación OTP enviado por mensaje de texto autenticación en dos pasos"
+        "SMS one-time passcode delivery",
+        "SMS OTP authentication text message verification code",
+        "código de un solo uso por SMS",
+        "contraseña de un solo uso OTP mensaje de texto autenticación"
       ],
       "top": [
         "nist-sp800-63b.pdf p11",
         "nist-sp800-63b.pdf p1",
+        "mdn-http-es.pdf p2",
         "nist-sp800-63b.pdf p14",
-        "nist-sp800-63b.pdf p15",
         "nist-sp800-63b.pdf p13"
       ]
     },
@@ -677,11 +689,11 @@
       "id": "nist-14",
       "tags": [],
       "rank": 2,
-      "latency_ms": 1785.1,
+      "latency_ms": 1919.7,
       "llm_calls": 1,
       "queries": [
-        "session secret minimum entropy bits",
-        "session ID entropy requirements",
+        "session secret entropy minimum bits",
+        "session ID entropy length requirements",
         "entropía mínima del secreto de sesión en bits",
         "longitud y entropía del identificador de sesión"
       ],
@@ -697,12 +709,12 @@
       "id": "nist-15",
       "tags": [],
       "rank": 1,
-      "latency_ms": 1983.1,
+      "latency_ms": 2450.0,
       "llm_calls": 1,
       "queries": [
         "requirements for session cookies security attributes",
         "session cookie Secure HttpOnly SameSite flags",
-        "requisitos de seguridad de las cookies de sesión",
+        "requisitos de las cookies de sesión seguridad",
         "cookies de sesión atributos Secure HttpOnly SameSite caducidad"
       ],
       "top": [
@@ -719,13 +731,13 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 2269.4,
+      "latency_ms": 2417.9,
       "llm_calls": 1,
       "queries": [
-        "FIPS 140 validation level required for multi-factor authenticators at AAL3",
-        "AAL3 authenticator requirements cryptographic module FIPS 140 Level 2 Level 3 physical security",
-        "nivel de seguridad FIPS 140 requerido para autenticadores multifactor en AAL3",
-        "nivel de garantía de autenticador 3 requisitos módulo criptográfico validado FIPS 140"
+        "FIPS 140 validation level required for AAL3 authenticators",
+        "AAL3 multi-factor cryptographic device FIPS 140 Level 2 overall Level 3 physical security",
+        "nivel de aseguramiento del autenticador AAL3 validación FIPS 140",
+        "autenticador criptográfico multifactor requisitos AAL3 NIST SP 800-63B"
       ],
       "top": [
         "nist-sp800-63b.pdf p5",
@@ -738,21 +750,21 @@
     {
       "id": "nist-17",
       "tags": [],
-      "rank": 2,
-      "latency_ms": 1518.4,
+      "rank": 4,
+      "latency_ms": 1683.0,
       "llm_calls": 1,
       "queries": [
         "AAL1 reauthentication frequency NIST SP 800-63B",
-        "authenticator assurance level 1 reauthentication 30 days",
-        "nivel de aseguramiento del autenticador 1 reautenticación",
-        "frecuencia de reautenticación AAL1 SP 800-63B"
+        "authenticator assurance level 1 reauthentication every 30 days",
+        "reautenticación nivel de garantía del autenticador AAL1",
+        "requisitos de reautenticación periódica AAL1 NIST 800-63B"
       ],
       "top": [
         "nist-sp800-63b.pdf p26",
-        "nist-sp800-63b.pdf p2",
+        "nist-sp800-63b.pdf p27",
         "nist-sp800-63b.pdf p1",
-        "nist-sp800-63b.pdf p5",
-        "nist-sp800-63b.pdf p24"
+        "nist-sp800-63b.pdf p2",
+        "nist-sp800-63b.pdf p5"
       ]
     },
     {
@@ -761,13 +773,13 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 1705.3,
+      "latency_ms": 1705.4,
       "llm_calls": 1,
       "queries": [
-        "maximum line length Python code PEP 8",
-        "Python style guide line length limit 79 characters",
-        "longitud máxima de línea en código Python PEP 8",
-        "guía de estilo Python límite de caracteres por línea"
+        "maximum line length Python code",
+        "PEP 8 line length limit 79 characters",
+        "longitud máxima de línea en Python",
+        "PEP 8 límite de longitud de línea 79 caracteres"
       ],
       "top": [
         "pep8-style-guide.pdf p4",
@@ -783,13 +795,13 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 1979.6,
+      "latency_ms": 2211.7,
       "llm_calls": 1,
       "queries": [
         "maximum line length for docstrings and comments",
         "PEP 8 limit docstring and comment line length to 72 characters",
-        "longitud máxima de línea en comentarios y docstrings",
-        "guía de estilo longitud de línea 79 caracteres comentarios"
+        "longitud máxima de línea en docstrings y comentarios",
+        "guía de estilo: limitar la longitud de las líneas a 72 caracteres"
       ],
       "top": [
         "pep8-style-guide.pdf p14",
@@ -805,31 +817,31 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 3622.5,
+      "latency_ms": 3407.8,
       "llm_calls": 1,
       "queries": [
-        "maximum line length 99 characters",
+        "maximum line length 99 characters style guide",
         "PEP 8 maximum line length team agreement",
-        "longitud máxima de línea 99 caracteres",
-        "guía de estilo PEP 8 longitud máxima de línea equipo"
+        "longitud máxima de línea guía de estilo",
+        "PEP 8 límite de longitud de línea 99 caracteres equipos"
       ],
       "top": [
         "pep8-style-guide.pdf p4",
         "pep8-style-guide.pdf p5",
         "nist-sp800-63b.pdf p8",
-        "mdn-http-es.pdf p21",
-        "mdn-http-es.pdf p18"
+        "pep8-style-guide.pdf p26",
+        "pep8-style-guide.pdf p3"
       ]
     },
     {
       "id": "pep8-04",
       "tags": [],
       "rank": 1,
-      "latency_ms": 1667.4,
+      "latency_ms": 1917.1,
       "llm_calls": 1,
       "queries": [
         "spaces per indentation level",
-        "indentation size coding style guide",
+        "indentation size code style guide",
         "espacios por nivel de sangría",
         "guía de estilo de código sangría"
       ],
@@ -838,26 +850,26 @@
         "pep8-style-guide.pdf p4",
         "pep8-style-guide.pdf p3",
         "pep8-style-guide.pdf p26",
-        "pep8-style-guide.pdf p11"
+        "pep8-style-guide.pdf p13"
       ]
     },
     {
       "id": "pep8-05",
       "tags": [],
       "rank": 1,
-      "latency_ms": 2298.5,
+      "latency_ms": 1972.2,
       "llm_calls": 1,
       "queries": [
-        "blank lines around top-level function and class definitions",
-        "two blank lines surrounding top-level definitions PEP 8",
+        "two blank lines surrounding top-level function and class definitions",
+        "PEP 8 blank lines",
         "líneas en blanco antes y después de funciones y clases de nivel superior",
-        "guía de estilo PEP 8 líneas en blanco entre definiciones"
+        "PEP 8 líneas en blanco entre definiciones"
       ],
       "top": [
         "pep8-style-guide.pdf p5",
         "pep8-style-guide.pdf p19",
-        "pep8-style-guide.pdf p25",
         "pep8-style-guide.pdf p26",
+        "pep8-style-guide.pdf p25",
         "pep8-style-guide.pdf p3"
       ]
     },
@@ -867,7 +879,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 2216.0,
+      "latency_ms": 2096.2,
       "llm_calls": 1,
       "queries": [
         "Python source file encoding declaration default UTF-8",
@@ -887,11 +899,11 @@
       "id": "pep8-07",
       "tags": [],
       "rank": 2,
-      "latency_ms": 2115.8,
+      "latency_ms": 2192.0,
       "llm_calls": 1,
       "queries": [
         "import groups separation",
-        "import statement ordering and grouping style guide",
+        "import statements grouping order style guide",
         "separar grupos de importaciones",
         "agrupación y orden de las importaciones guía de estilo"
       ],
@@ -899,8 +911,8 @@
         "pep8-style-guide.pdf p7",
         "pep8-style-guide.pdf p6",
         "pep8-style-guide.pdf p15",
-        "mdn-http-es.pdf p40",
-        "pep8-style-guide.pdf p17"
+        "pep8-style-guide.pdf p17",
+        "mdn-http-es.pdf p40"
       ]
     },
     {
@@ -909,72 +921,72 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 2649.1,
+      "latency_ms": 2358.9,
       "llm_calls": 1,
       "queries": [
-        "module-level dunders __all__ __version__ placement in module",
-        "PEP 8 module level dunder names after docstring before imports",
+        "module-level dunders __all__ __version__ placement in Python module",
+        "PEP 8 module level dunder names after docstring and before imports",
         "dónde colocar variables dunder a nivel de módulo __all__ __version__",
-        "guía de estilo PEP 8 nombres dunder de módulo después del docstring y antes de las importaciones"
+        "convenciones de estilo Python nombres dunder de módulo después del docstring y antes de las importaciones"
       ],
       "top": [
         "pep8-style-guide.pdf p7",
         "raspberry-pi-hardware.pdf p9",
         "pep8-style-guide.pdf p26",
-        "pep8-style-guide.pdf p19",
-        "pep8-style-guide.pdf p8"
+        "pep8-style-guide.pdf p15",
+        "pep8-style-guide.pdf p1"
       ]
     },
     {
       "id": "pep8-09",
       "tags": [],
       "rank": 2,
-      "latency_ms": 2204.8,
+      "latency_ms": 2385.0,
       "llm_calls": 1,
       "queries": [
         "single-letter variable names to avoid in code style guide",
-        "ambiguous variable names l, O, I coding conventions",
+        "ambiguous variable names l, O, I naming conventions PEP 8",
         "nombres de variables de una sola letra que se deben evitar",
-        "convenciones de nomenclatura: nombres de variables ambiguos como l, O, I"
+        "convenciones de nomenclatura: nombres de variables ambiguos como l, O e I"
       ],
       "top": [
         "pep8-style-guide.pdf p17",
         "pep8-style-guide.pdf p16",
         "pep8-style-guide.pdf p26",
         "pep8-style-guide.pdf p18",
-        "pep8-style-guide.pdf p6"
+        "pep8-style-guide.pdf p15"
       ]
     },
     {
       "id": "pep8-10",
       "tags": [],
       "rank": 1,
-      "latency_ms": 2182.9,
+      "latency_ms": 2167.7,
       "llm_calls": 1,
       "queries": [
-        "first argument of a class method cls naming convention",
-        "class method first parameter name cls instead of self",
-        "argumento de un método de clase nombre convención cls",
-        "primer parámetro de un método de clase y de instancia self"
+        "first argument of a class method naming convention cls",
+        "classmethod first parameter cls instead of self",
+        "primer argumento de un método de clase convención de nombres cls",
+        "parámetro cls en métodos de clase decorador classmethod"
       ],
       "top": [
         "pep8-style-guide.pdf p17",
         "pep8-style-guide.pdf p18",
-        "pep8-style-guide.pdf p19",
-        "pep8-style-guide.pdf p16",
-        "pep8-style-guide.pdf p21"
+        "pep8-style-guide.pdf p3",
+        "pep8-style-guide.pdf p21",
+        "pep8-style-guide.pdf p11"
       ]
     },
     {
       "id": "pep8-11",
       "tags": [],
       "rank": 1,
-      "latency_ms": 1421.3,
+      "latency_ms": 1508.1,
       "llm_calls": 1,
       "queries": [
         "constant naming conventions",
-        "UPPER_CASE naming for constants",
-        "convenciones de nomenclatura de constantes",
+        "UPPER_CASE_WITH_UNDERSCORES constants style guide",
+        "convención de nomenclatura de constantes",
         "nombres de constantes en mayúsculas con guiones bajos"
       ],
       "top": [
@@ -982,26 +994,26 @@
         "pep8-style-guide.pdf p15",
         "pep8-style-guide.pdf p16",
         "pep8-style-guide.pdf p17",
-        "pep8-style-guide.pdf p19"
+        "pep8-style-guide.pdf p1"
       ]
     },
     {
       "id": "pep8-12",
       "tags": [],
       "rank": 1,
-      "latency_ms": 2552.1,
+      "latency_ms": 1984.4,
       "llm_calls": 1,
       "queries": [
-        "compare value to None using \"is None\" instead of equality operator",
-        "identity vs equality comparison None singleton PEP 8",
-        "comparar un valor con None usando \"is None",
-        "comparación de identidad frente a igualdad con None en Python"
+        "compare value to None using \"is\" or \"is not\" operator",
+        "identity comparison with None versus equality operator ==",
+        "comparar un valor con None usando \"is\" e \"is not",
+        "comparación de identidad con None en lugar del operador =="
       ],
       "top": [
         "pep8-style-guide.pdf p20",
         "pep8-style-guide.pdf p24",
-        "pep8-style-guide.pdf p11",
         "pep8-style-guide.pdf p23",
+        "pep8-style-guide.pdf p11",
         "pep8-style-guide.pdf p21"
       ]
     },
@@ -1009,33 +1021,33 @@
       "id": "pep8-13",
       "tags": [],
       "rank": 1,
-      "latency_ms": 1832.5,
+      "latency_ms": 2198.3,
       "llm_calls": 1,
       "queries": [
         "type() vs isinstance() to check an object's type in Python",
-        "isinstance() checks inheritance and subclasses",
-        "comprobar el tipo de un objeto con type() o isinstance() en Python",
-        "función isinstance() herencia y subclases"
+        "isinstance() with inheritance and subclasses",
+        "comprobar el tipo de un objeto en Python con type() e isinstance()",
+        "isinstance() frente a type() herencia y subclases"
       ],
       "top": [
         "pep8-style-guide.pdf p24",
         "pep8-style-guide.pdf p26",
         "pep8-style-guide.pdf p20",
-        "pep8-style-guide.pdf p17",
-        "pep8-style-guide.pdf p25"
+        "pep8-style-guide.pdf p25",
+        "pep8-style-guide.pdf p17"
       ]
     },
     {
       "id": "pep8-14",
       "tags": [],
       "rank": 1,
-      "latency_ms": 1772.3,
+      "latency_ms": 1937.4,
       "llm_calls": 1,
       "queries": [
-        "assigning a lambda expression to a variable",
+        "assigning a lambda expression to a variable name",
         "PEP 8 recommendation lambda assignment vs def statement",
         "asignar una expresión lambda a una variable",
-        "función lambda asignada a un nombre frente a def guía de estilo"
+        "función lambda asignada a un nombre frente a def, guía de estilo"
       ],
       "top": [
         "pep8-style-guide.pdf p21",
@@ -1052,20 +1064,20 @@
         "cross-language"
       ],
       "rank": 2,
-      "latency_ms": 2225.5,
+      "latency_ms": 2686.1,
       "llm_calls": 1,
       "queries": [
         "HTTP 418 I'm a teapot status code",
         "RFC 2324 Hyper Text Coffee Pot Control Protocol 418",
         "código de estado HTTP 418 soy una tetera",
-        "HTCPCP protocolo de control de cafeteras código 418"
+        "protocolo de control de cafeteras HTTP error 418"
       ],
       "top": [
         "mdn-http-es.pdf p10",
         "mdn-http-es.pdf p9",
         "mdn-http-es.pdf p3",
         "mdn-http-es.pdf p21",
-        "mdn-http-es.pdf p11"
+        "mdn-http-es.pdf p2"
       ]
     },
     {
@@ -1075,7 +1087,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 2112.4,
+      "latency_ms": 2181.7,
       "llm_calls": 1,
       "queries": [
         "405 Method Not Allowed Allow header required",
@@ -1097,7 +1109,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 2940.0,
+      "latency_ms": 2044.7,
       "llm_calls": 1,
       "queries": [
         "HTTP 302 Found status code temporary redirect",
@@ -1118,21 +1130,21 @@
       "tags": [
         "cross-language"
       ],
-      "rank": 6,
-      "latency_ms": 1894.9,
+      "rank": 5,
+      "latency_ms": 2021.4,
       "llm_calls": 1,
       "queries": [
         "404 Not Found status code temporary or permanent",
-        "410 Gone status code permanent removal",
-        "código de estado 404 No encontrado recurso temporal o permanente",
-        "código de respuesta 410 Gone eliminación permanente"
+        "404 vs 410 Gone permanent removal",
+        "código de estado 404 No encontrado recurso no disponible temporal o permanente",
+        "410 Gone recurso eliminado permanentemente"
       ],
       "top": [
         "mdn-http-es.pdf p8",
         "pep8-style-guide.pdf p22",
         "mdn-http-es.pdf p5",
         "mdn-http-es.pdf p2",
-        "mdn-http-es.pdf p3"
+        "mdn-http-es.pdf p7"
       ]
     },
     {
@@ -1141,20 +1153,20 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 2612.9,
+      "latency_ms": 1665.0,
       "llm_calls": 1,
       "queries": [
-        "Retry-After header 503 Service Unavailable response",
-        "HTTP 503 Service Unavailable Retry-After header field",
-        "cabecera Retry-After respuesta 503 Servicio no disponible",
-        "código de estado 503 Service Unavailable encabezado Retry-After RFC 9110"
+        "Retry-After header 503 Service Unavailable",
+        "HTTP 503 response headers",
+        "encabezado Retry-After respuesta 503 Servicio no disponible",
+        "cabeceras de respuesta HTTP código de estado 503"
       ],
       "top": [
         "mdn-http-es.pdf p11",
         "mdn-http-es.pdf p12",
-        "mdn-http-es.pdf p9",
         "mdn-http-es.pdf p10",
-        "mdn-http-es.pdf p17"
+        "mdn-http-es.pdf p9",
+        "mdn-http-es.pdf p2"
       ]
     },
     {
@@ -1163,13 +1175,13 @@
         "cross-language"
       ],
       "rank": 2,
-      "latency_ms": 1535.2,
+      "latency_ms": 1968.5,
       "llm_calls": 1,
       "queries": [
-        "Cache-Control no-cache directive response storage",
-        "no-cache vs no-store Cache-Control directives",
-        "directiva Cache-Control no-cache almacenamiento de la respuesta",
-        "Cache-Control no-store frente a no-cache revalidación caché"
+        "Cache-Control no-cache directive response storage revalidation",
+        "Cache-Control no-store vs no-cache difference",
+        "directiva Cache-Control no-cache almacenamiento de la respuesta en caché",
+        "Cache-Control no-store y no-cache diferencias validación"
       ],
       "top": [
         "mdn-http-es.pdf p19",
@@ -1184,21 +1196,21 @@
       "tags": [
         "cross-language"
       ],
-      "rank": 9,
-      "latency_ms": 2228.8,
+      "rank": 10,
+      "latency_ms": 2478.5,
       "llm_calls": 1,
       "queries": [
-        "Cache-Control no-store directive",
-        "Cache-Control directives prevent caching of response",
-        "Cache-Control no-store directiva",
-        "directivas Cache-Control para evitar que las cachés almacenen una respuesta"
+        "Cache-Control no-store directive prevents caching of response",
+        "Cache-Control directives: no-store vs no-cache",
+        "Cabecera Cache-Control directiva no-store impide almacenar la respuesta en caché",
+        "directivas de Cache-Control en HTTP caché compartida y privada"
       ],
       "top": [
         "mdn-http-es.pdf p12",
         "mdn-http-es.pdf p19",
         "mdn-http-es.pdf p14",
         "mdn-http-es.pdf p18",
-        "mdn-http-es.pdf p20"
+        "mdn-http-es.pdf p13"
       ]
     },
     {
@@ -1208,13 +1220,13 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 1951.3,
+      "latency_ms": 2224.6,
       "llm_calls": 1,
       "queries": [
         "Cache-Control immutable directive meaning",
         "immutable response directive no revalidation while fresh",
-        "directiva Cache-Control immutable significado",
-        "directiva immutable caché no revalidar contenido mientras sea fresco"
+        "directiva Cache-Control immutable",
+        "directiva immutable en Cache-Control: el contenido no cambia, sin revalidación"
       ],
       "top": [
         "mdn-http-es.pdf p16",
@@ -1231,20 +1243,20 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 1895.2,
+      "latency_ms": 2146.3,
       "llm_calls": 1,
       "queries": [
         "ETag W/ prefix weak validator",
         "weak vs strong entity tag comparison HTTP",
         "prefijo W/ en ETag validador débil",
-        "etiqueta de entidad débil y fuerte en HTTP"
+        "etiqueta de entidad débil y fuerte cabecera ETag HTTP"
       ],
       "top": [
         "mdn-http-es.pdf p34",
         "mdn-http-es.pdf p35",
+        "mdn-http-es.pdf p5",
         "mdn-http-es.pdf p40",
-        "mdn-http-es.pdf p21",
-        "mdn-http-es.pdf p5"
+        "mdn-http-es.pdf p21"
       ]
     },
     {
@@ -1254,13 +1266,13 @@
         "cross-language"
       ],
       "rank": 2,
-      "latency_ms": 2447.3,
+      "latency_ms": 1636.1,
       "llm_calls": 1,
       "queries": [
+        "X-Frame-Options DENY behavior",
         "X-Frame-Options DENY prevents page from being displayed in a frame",
-        "X-Frame-Options header clickjacking protection",
-        "X-Frame-Options DENY impide que la página se muestre en un marco (frame, iframe)",
-        "cabecera X-Frame-Options protección contra clickjacking"
+        "X-Frame-Options DENY comportamiento",
+        "cabecera X-Frame-Options DENY impide mostrar la página en un marco iframe"
       ],
       "top": [
         "mdn-http-es.pdf p33",
@@ -1276,13 +1288,13 @@
         "cross-language"
       ],
       "rank": 2,
-      "latency_ms": 1912.8,
+      "latency_ms": 2183.5,
       "llm_calls": 1,
       "queries": [
         "SameSite=None cookie requires Secure attribute",
         "cookie SameSite=None Secure HTTPS requirement",
-        "cookie SameSite=None requiere atributo Secure",
-        "cookies de terceros SameSite=None Secure HTTPS"
+        "cookie con SameSite=None requiere atributo Secure",
+        "atributo SameSite=None cookies de terceros HTTPS"
       ],
       "top": [
         "mdn-http-es.pdf p28",
@@ -1298,20 +1310,20 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 1662.2,
+      "latency_ms": 1674.6,
       "llm_calls": 1,
       "queries": [
-        "cookie Expires and Max-Age attributes precedence",
+        "cookie Expires and Max-Age attribute precedence",
         "Set-Cookie Max-Age takes precedence over Expires RFC 6265",
-        "atributos Expires y Max-Age de una cookie, cuál tiene prioridad",
-        "cookie Set-Cookie Max-Age frente a Expires RFC 6265"
+        "atributos Expires y Max-Age de cookie, cuál tiene prioridad",
+        "cabecera Set-Cookie Max-Age y Expires RFC 6265"
       ],
       "top": [
         "mdn-http-es.pdf p29",
         "mdn-http-es.pdf p30",
         "mdn-http-es.pdf p28",
         "mdn-http-es.pdf p18",
-        "mdn-http-es.pdf p31"
+        "mdn-http-es.pdf p12"
       ]
     },
     {
@@ -1321,13 +1333,13 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 2079.1,
+      "latency_ms": 2411.5,
       "llm_calls": 1,
       "queries": [
-        "__Host- cookie prefix Path attribute requirements",
-        "cookie __Host- prefix must have Path=/ Secure no Domain",
-        "prefijo __Host- de cookies atributo Path=/",
-        "cookies con prefijo __Host- requisitos Secure, Domain y Path"
+        "__Host- cookie prefix Path attribute",
+        "cookie prefixes __Host- requirements Secure Path=/ no Domain",
+        "prefijo de cookie __Host- atributo Path",
+        "prefijo __Host- cookie requisitos Secure Path=/ sin atributo Domain"
       ],
       "top": [
         "mdn-http-es.pdf p31",
@@ -1343,12 +1355,12 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 2100.5,
+      "latency_ms": 2388.4,
       "llm_calls": 1,
       "queries": [
         "X-Content-Type-Options nosniff request destinations style script",
         "nosniff blocks MIME type sniffing for scripts and stylesheets",
-        "cabecera X-Content-Type-Options nosniff tipos de solicitud",
+        "cabecera X-Content-Type-Options nosniff tipos de solicitud afectados",
         "nosniff evitar detección de tipo MIME en scripts y hojas de estilo"
       ],
       "top": [
@@ -1366,20 +1378,20 @@
         "cross-language"
       ],
       "rank": 3,
-      "latency_ms": 2192.8,
+      "latency_ms": 2229.1,
       "llm_calls": 1,
       "queries": [
         "HSTS Strict-Transport-Security header example includeSubDomains max-age",
         "Strict-Transport-Security max-age includeSubDomains preload",
-        "encabezado Strict-Transport-Security ejemplo includeSubDomains max-age",
-        "HSTS directiva max-age includeSubDomains en segundos"
+        "encabezado Strict-Transport-Security ejemplo max-age includeSubDomains",
+        "HSTS directiva max-age segundos includeSubDomains"
       ],
       "top": [
         "mdn-http-es.pdf p29",
         "mdn-http-es.pdf p22",
         "mdn-http-es.pdf p23",
-        "mdn-http-es.pdf p30",
-        "mdn-http-es.pdf p12"
+        "mdn-http-es.pdf p12",
+        "mdn-http-es.pdf p30"
       ]
     },
     {
@@ -1389,13 +1401,13 @@
         "cross-language"
       ],
       "rank": 3,
-      "latency_ms": 1778.1,
+      "latency_ms": 3164.9,
       "llm_calls": 1,
       "queries": [
         "HTTP status 413 Payload Too Large",
-        "error 413 Request Entity Too Large",
-        "código de estado HTTP 413 Contenido demasiado grande",
-        "error 413 Entidad de solicitud demasiado grande"
+        "413 Request Entity Too Large error",
+        "código de estado HTTP 413 Entidad de solicitud demasiado grande",
+        "error 413 carga útil demasiado grande"
       ],
       "top": [
         "mdn-http-es.pdf p2",
@@ -1411,20 +1423,20 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 2040.8,
+      "latency_ms": 2905.4,
       "llm_calls": 1,
       "queries": [
         "Content-Disposition filename vs filename* parameter",
-        "RFC 6266 filename* encoding RFC 5987 extended notation",
-        "Content-Disposition parámetro filename* codificación UTF-8",
-        "diferencia entre filename y filename* en la cabecera Content-Disposition"
+        "RFC 6266 filename* RFC 5987 extended notation encoding",
+        "Content-Disposition parámetro filename y filename* codificación",
+        "cabecera Content-Disposition nombre de archivo UTF-8 filename"
       ],
       "top": [
         "mdn-http-es.pdf p37",
         "mdn-http-es.pdf p36",
         "mdn-http-es.pdf p4",
-        "mdn-http-es.pdf p35",
-        "mdn-http-es.pdf p38"
+        "mdn-http-es.pdf p38",
+        "mdn-http-es.pdf p35"
       ]
     },
     {
@@ -1433,20 +1445,20 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 2014.4,
+      "latency_ms": 2235.1,
       "llm_calls": 1,
       "queries": [
-        "HTTP 206 Partial Content response status",
-        "Range requests Content-Range header 206",
+        "206 Partial Content HTTP status code",
+        "Range requests and partial responses HTTP",
         "código de estado HTTP 206 Contenido parcial",
-        "solicitud de rango cabecera Content-Range respuesta 206"
+        "cabecera Range solicitud de rango respuesta parcial"
       ],
       "top": [
         "mdn-http-es.pdf p4",
         "mdn-http-es.pdf p36",
         "mdn-http-es.pdf p3",
-        "mdn-http-es.pdf p9",
-        "mdn-http-es.pdf p5"
+        "mdn-http-es.pdf p2",
+        "mdn-http-es.pdf p9"
       ]
     },
     {
@@ -1455,13 +1467,13 @@
         "cross-language"
       ],
       "rank": 3,
-      "latency_ms": 2081.3,
+      "latency_ms": 2417.0,
       "llm_calls": 1,
       "queries": [
         "WWW-Authenticate header 401 Unauthorized response",
-        "401 Unauthorized WWW-Authenticate challenge authentication scheme",
-        "encabezado WWW-Authenticate respuesta 401 Unauthorized",
-        "código de estado 401 No autorizado cabecera WWW-Authenticate desafío de autenticación"
+        "401 Unauthorized WWW-Authenticate challenge",
+        "encabezado WWW-Authenticate respuesta 401 No autorizado",
+        "código de estado 401 cabecera WWW-Authenticate"
       ],
       "top": [
         "mdn-http-es.pdf p26",

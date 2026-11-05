@@ -2,7 +2,7 @@
   "date": "2026-11-05",
   "config": "hybrid",
   "description": "Hybrid search: vector and keyword rankings fused by reciprocal rank, no query rewrite.",
-  "commit": "ff4641a",
+  "commit": "fdd7c03",
   "setup": {
     "vector_store": "chroma",
     "embeddings": "local:BAAI/bge-small-en-v1.5",
@@ -11,7 +11,19 @@
     "chunk_overlap_tokens": 60,
     "query_rewrite": false,
     "search_mode": "hybrid",
-    "k": 10
+    "k": 10,
+    "reranker": "off",
+    "hardware": {
+      "os": "Windows-11",
+      "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+      "cores": 32,
+      "gpu": "NVIDIA GeForce RTX 4080",
+      "onnx_providers": [
+        "TensorrtExecutionProvider",
+        "CUDAExecutionProvider",
+        "CPUExecutionProvider"
+      ]
+    }
   },
   "dataset": {
     "questions": 66,
@@ -21,16 +33,16 @@
       "pep8-style-guide.pdf",
       "raspberry-pi-hardware.pdf"
     ],
-    "ingest_seconds": 66.1
+    "ingest_seconds": 8.3
   },
   "retrieval": {
     "questions": 66,
     "recall@1": 0.6212,
     "recall@5": 0.9394,
     "recall@10": 0.9848,
-    "mrr@10": 0.7658,
-    "latency_p50_ms": 50.2,
-    "latency_p95_ms": 67.0,
+    "mrr@10": 0.7633,
+    "latency_p50_ms": 11.2,
+    "latency_p95_ms": 13.2,
     "llm_calls_per_query": 0.0
   },
   "by_tag": {
@@ -40,8 +52,8 @@
       "recall@5": 0.8947,
       "recall@10": 1.0,
       "mrr@10": 0.6868,
-      "latency_p50_ms": 47.0,
-      "latency_p95_ms": 54.7,
+      "latency_p50_ms": 11.7,
+      "latency_p95_ms": 12.7,
       "llm_calls_per_query": 0.0
     },
     "exact": {
@@ -50,8 +62,8 @@
       "recall@5": 0.8889,
       "recall@10": 0.963,
       "mrr@10": 0.7423,
-      "latency_p50_ms": 50.2,
-      "latency_p95_ms": 74.6,
+      "latency_p50_ms": 11.2,
+      "latency_p95_ms": 12.4,
       "llm_calls_per_query": 0.0
     },
     "untagged": {
@@ -59,9 +71,9 @@
       "recall@1": 0.6786,
       "recall@5": 1.0,
       "recall@10": 1.0,
-      "mrr@10": 0.8167,
-      "latency_p50_ms": 51.4,
-      "latency_p95_ms": 65.0,
+      "mrr@10": 0.8107,
+      "latency_p50_ms": 11.1,
+      "latency_p95_ms": 13.2,
       "llm_calls_per_query": 0.0
     }
   },
@@ -73,7 +85,7 @@
         "exact"
       ],
       "rank": 8,
-      "latency_ms": 50.1,
+      "latency_ms": 10.4,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -90,7 +102,7 @@
         "exact"
       ],
       "rank": null,
-      "latency_ms": 78.2,
+      "latency_ms": 11.3,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -107,7 +119,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 65.5,
+      "latency_ms": 12.1,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -122,7 +134,7 @@
       "id": "rpi-04",
       "tags": [],
       "rank": 1,
-      "latency_ms": 52.2,
+      "latency_ms": 13.3,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -137,7 +149,7 @@
       "id": "rpi-05",
       "tags": [],
       "rank": 1,
-      "latency_ms": 50.1,
+      "latency_ms": 12.5,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -154,7 +166,7 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 52.3,
+      "latency_ms": 10.4,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -169,7 +181,7 @@
       "id": "rpi-07",
       "tags": [],
       "rank": 1,
-      "latency_ms": 50.9,
+      "latency_ms": 10.4,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -184,7 +196,7 @@
       "id": "rpi-08",
       "tags": [],
       "rank": 1,
-      "latency_ms": 51.5,
+      "latency_ms": 12.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -201,7 +213,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 44.7,
+      "latency_ms": 11.4,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -218,7 +230,7 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 52.1,
+      "latency_ms": 10.9,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -235,7 +247,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 50.2,
+      "latency_ms": 10.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -250,7 +262,7 @@
       "id": "rpi-12",
       "tags": [],
       "rank": 1,
-      "latency_ms": 53.1,
+      "latency_ms": 10.5,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -267,7 +279,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 56.0,
+      "latency_ms": 13.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -282,7 +294,7 @@
       "id": "rpi-14",
       "tags": [],
       "rank": 1,
-      "latency_ms": 53.0,
+      "latency_ms": 11.9,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -297,7 +309,7 @@
       "id": "rpi-15",
       "tags": [],
       "rank": 1,
-      "latency_ms": 60.8,
+      "latency_ms": 10.5,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -312,7 +324,7 @@
       "id": "rpi-16",
       "tags": [],
       "rank": 1,
-      "latency_ms": 67.2,
+      "latency_ms": 11.2,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -327,7 +339,7 @@
       "id": "nist-01",
       "tags": [],
       "rank": 5,
-      "latency_ms": 51.9,
+      "latency_ms": 11.9,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -344,7 +356,7 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 49.4,
+      "latency_ms": 10.7,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -359,7 +371,7 @@
       "id": "nist-03",
       "tags": [],
       "rank": 3,
-      "latency_ms": 45.1,
+      "latency_ms": 13.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -374,7 +386,7 @@
       "id": "nist-04",
       "tags": [],
       "rank": 2,
-      "latency_ms": 52.7,
+      "latency_ms": 13.1,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -391,7 +403,7 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 46.0,
+      "latency_ms": 10.3,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -408,7 +420,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 47.1,
+      "latency_ms": 11.2,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -423,7 +435,7 @@
       "id": "nist-07",
       "tags": [],
       "rank": 2,
-      "latency_ms": 47.1,
+      "latency_ms": 10.3,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -440,7 +452,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 44.3,
+      "latency_ms": 11.4,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -455,7 +467,7 @@
       "id": "nist-09",
       "tags": [],
       "rank": 1,
-      "latency_ms": 51.3,
+      "latency_ms": 13.0,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -472,7 +484,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 47.9,
+      "latency_ms": 10.2,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -487,7 +499,7 @@
       "id": "nist-11",
       "tags": [],
       "rank": 1,
-      "latency_ms": 45.4,
+      "latency_ms": 10.1,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -502,7 +514,7 @@
       "id": "nist-12",
       "tags": [],
       "rank": 1,
-      "latency_ms": 44.5,
+      "latency_ms": 11.7,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -517,7 +529,7 @@
       "id": "nist-13",
       "tags": [],
       "rank": 3,
-      "latency_ms": 46.9,
+      "latency_ms": 11.2,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -532,7 +544,7 @@
       "id": "nist-14",
       "tags": [],
       "rank": 2,
-      "latency_ms": 46.9,
+      "latency_ms": 11.0,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -547,7 +559,7 @@
       "id": "nist-15",
       "tags": [],
       "rank": 1,
-      "latency_ms": 48.0,
+      "latency_ms": 10.4,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -564,7 +576,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 47.3,
+      "latency_ms": 10.3,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -578,14 +590,14 @@
     {
       "id": "nist-17",
       "tags": [],
-      "rank": 2,
-      "latency_ms": 53.0,
+      "rank": 3,
+      "latency_ms": 11.2,
       "llm_calls": 0,
       "queries": [],
       "top": [
         "nist-sp800-63b.pdf p26",
-        "nist-sp800-63b.pdf p2",
         "nist-sp800-63b.pdf p27",
+        "nist-sp800-63b.pdf p2",
         "nist-sp800-63b.pdf p1",
         "nist-sp800-63b.pdf p24"
       ]
@@ -596,7 +608,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 127.9,
+      "latency_ms": 11.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -613,7 +625,7 @@
         "exact"
       ],
       "rank": 2,
-      "latency_ms": 66.2,
+      "latency_ms": 11.7,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -630,7 +642,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 52.4,
+      "latency_ms": 12.3,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -645,7 +657,7 @@
       "id": "pep8-04",
       "tags": [],
       "rank": 1,
-      "latency_ms": 49.7,
+      "latency_ms": 10.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -660,7 +672,7 @@
       "id": "pep8-05",
       "tags": [],
       "rank": 1,
-      "latency_ms": 41.3,
+      "latency_ms": 11.7,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -677,7 +689,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 52.1,
+      "latency_ms": 10.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -692,7 +704,7 @@
       "id": "pep8-07",
       "tags": [],
       "rank": 2,
-      "latency_ms": 68.9,
+      "latency_ms": 10.5,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -709,7 +721,7 @@
         "exact"
       ],
       "rank": 1,
-      "latency_ms": 59.7,
+      "latency_ms": 11.1,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -724,7 +736,7 @@
       "id": "pep8-09",
       "tags": [],
       "rank": 2,
-      "latency_ms": 51.8,
+      "latency_ms": 9.8,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -739,7 +751,7 @@
       "id": "pep8-10",
       "tags": [],
       "rank": 1,
-      "latency_ms": 58.5,
+      "latency_ms": 11.0,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -754,7 +766,7 @@
       "id": "pep8-11",
       "tags": [],
       "rank": 1,
-      "latency_ms": 60.2,
+      "latency_ms": 10.5,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -769,7 +781,7 @@
       "id": "pep8-12",
       "tags": [],
       "rank": 1,
-      "latency_ms": 53.2,
+      "latency_ms": 9.8,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -784,7 +796,7 @@
       "id": "pep8-13",
       "tags": [],
       "rank": 1,
-      "latency_ms": 49.7,
+      "latency_ms": 10.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -799,7 +811,7 @@
       "id": "pep8-14",
       "tags": [],
       "rank": 1,
-      "latency_ms": 44.3,
+      "latency_ms": 11.1,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -817,7 +829,7 @@
         "cross-language"
       ],
       "rank": 2,
-      "latency_ms": 49.1,
+      "latency_ms": 11.2,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -835,7 +847,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 44.6,
+      "latency_ms": 10.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -852,7 +864,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 45.9,
+      "latency_ms": 10.3,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -869,7 +881,7 @@
         "cross-language"
       ],
       "rank": 5,
-      "latency_ms": 47.0,
+      "latency_ms": 10.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -886,7 +898,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 44.6,
+      "latency_ms": 11.7,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -903,7 +915,7 @@
         "cross-language"
       ],
       "rank": 2,
-      "latency_ms": 45.0,
+      "latency_ms": 11.8,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -920,7 +932,7 @@
         "cross-language"
       ],
       "rank": 10,
-      "latency_ms": 44.9,
+      "latency_ms": 11.3,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -938,7 +950,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 52.4,
+      "latency_ms": 11.9,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -956,7 +968,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 47.8,
+      "latency_ms": 10.7,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -974,7 +986,7 @@
         "cross-language"
       ],
       "rank": 2,
-      "latency_ms": 43.0,
+      "latency_ms": 12.2,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -991,7 +1003,7 @@
         "cross-language"
       ],
       "rank": 2,
-      "latency_ms": 43.9,
+      "latency_ms": 11.2,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -1008,7 +1020,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 49.6,
+      "latency_ms": 12.4,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -1026,7 +1038,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 46.8,
+      "latency_ms": 12.5,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -1043,7 +1055,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 46.6,
+      "latency_ms": 12.3,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -1061,7 +1073,7 @@
         "cross-language"
       ],
       "rank": 4,
-      "latency_ms": 53.4,
+      "latency_ms": 11.7,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -1079,7 +1091,7 @@
         "cross-language"
       ],
       "rank": 6,
-      "latency_ms": 53.1,
+      "latency_ms": 11.2,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -1096,7 +1108,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 53.1,
+      "latency_ms": 14.0,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -1113,7 +1125,7 @@
         "cross-language"
       ],
       "rank": 1,
-      "latency_ms": 54.2,
+      "latency_ms": 12.4,
       "llm_calls": 0,
       "queries": [],
       "top": [
@@ -1130,7 +1142,7 @@
         "cross-language"
       ],
       "rank": 3,
-      "latency_ms": 59.5,
+      "latency_ms": 11.6,
       "llm_calls": 0,
       "queries": [],
       "top": [
