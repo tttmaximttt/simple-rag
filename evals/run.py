@@ -176,6 +176,7 @@ def run(args, overrides, settings, work: Path) -> dict:
             "llm": f"{cfg['llm']['provider']}:{cfg['llm'][cfg['llm']['provider']]['model']}",
             "chunk_tokens": cfg["rag"]["chunk_tokens"], "chunk_overlap_tokens": cfg["rag"]["chunk_overlap_tokens"],
             "query_rewrite": bool(cfg["rag"]["query_rewrite"]), "search_mode": cfg["rag"]["search_mode"], "k": K,
+            "reranker": _reranker_name(cfg),
         },
         "dataset": {"questions": len(questions), "documents": sorted({q["doc"] for q in everything}),
                     "ingest_seconds": round(ingest_s, 1)},
@@ -243,6 +244,12 @@ def _drop(store):
         print(f"warning: could not drop the eval collection: {e}", file=sys.stderr)
 
 
+def _reranker_name(cfg) -> str:
+    r = cfg["reranker"]
+    p = r["provider"]
+    return "off" if p == "off" else f"{p}:{r[p]['model']} top {r['top_n']}"
+
+
 def _commit() -> str | None:
     """HEAD, with "-dirty" when tracked files have uncommitted changes, so a result that checking out its commit
     can't reproduce says so."""
@@ -270,7 +277,7 @@ def markdown(r: dict) -> str:
         r["description"] or "", "",
         f"Commit `{r['commit']}` · store {s['vector_store']} · embeddings `{s['embeddings']}` · LLM `{s['llm']}` · "
         f"chunks {s['chunk_tokens']}/{s['chunk_overlap_tokens']} tokens · {s.get('search_mode', 'vector')} search · "
-        f"rewrite {'on' if s['query_rewrite'] else 'off'} · "
+        f"rewrite {'on' if s['query_rewrite'] else 'off'} · reranker {s.get('reranker', 'off')} · "
         f"{r['dataset']['questions']} questions over {len(r['dataset']['documents'])} PDFs", "",
         "| Slice | Questions | Recall@1 | Recall@5 | Recall@10 | MRR@10 | p50 | p95 | LLM calls/query |",
         "|---|---|---|---|---|---|---|---|---|",

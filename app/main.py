@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 from . import auth, config, db, rag, stores, tokenizer
 from .mcp_server import MAX_QUERY_CHARS, mcp
 from .mcp_server import http_app as mcp_http_app
-from .providers import embeddings, llm
+from .providers import embeddings, llm, reranker
 
 STARTED = time.time()
 # Public base URL (e.g. https://rag.example.com), used in the OpenAPI spec for GPT Actions.
@@ -257,6 +257,11 @@ def _draft_config(body: dict | None) -> dict:
     for section, key in (("vector_store", "type"), ("embeddings", "provider"), ("llm", "provider")):
         if not isinstance(config.DEFAULTS[section].get(cfg[section][key]), dict):
             raise HTTPException(400, f"Unknown {section.replace('_', ' ')} {key}: {cfg[section][key]!r}")
+    if cfg["reranker"]["provider"] not in ("off", "local", "api"):
+        raise HTTPException(400, f"Unknown reranker provider: {cfg['reranker']['provider']!r}")
+    top_n = cfg["reranker"].get("top_n")
+    if not isinstance(top_n, int) or isinstance(top_n, bool) or not 1 <= top_n <= rag.MAX_RERANK:
+        raise HTTPException(400, f"Reranker top N must be a whole number from 1 to {rag.MAX_RERANK}")
     if cfg["rag"].get("search_mode") not in rag.SEARCH_MODES:
         raise HTTPException(400, f"Unknown search mode {cfg['rag'].get('search_mode')!r}: "
                                  f"use one of {', '.join(rag.SEARCH_MODES)}")
@@ -368,7 +373,20 @@ def _check(component, cfg):
         return _timed(lambda: f"dimension {len(embeddings.get(cfg).embed(['ping'])[0])}")
     if component == "llm":
         return _timed(lambda: llm.get(cfg).complete("Reply with the single word: pong", "ping")[:80])
+    if component == "reranker":
+        return _timed(lambda: _test_reranker(cfg))
     raise HTTPException(404, "unknown component")
+
+
+def _test_reranker(cfg):
+    r = reranker.get(cfg)
+    if r is None:
+        return "off"
+    good, bad = r.rerank("How long does the battery take to charge?",
+                         ["A full charge takes about four hours.", "The case is made of recycled aluminium."])
+    if good <= bad:
+        raise ValueError(f"ranked the unrelated passage higher ({bad:.3f} vs {good:.3f})")
+    return f"ranked the relevant passage first ({good:.3f} vs {bad:.3f})"
 
 
 @app.post("/api/test/{component}")
@@ -380,12 +398,13 @@ def test_component(component: str, body: dict | None = None):
 @app.post("/api/models/{component}")
 def list_models(component: str, body: dict | None = None):
     """Models the (possibly unsaved) embeddings or LLM provider offers, for the wizard's model picker."""
-    factory = {"embeddings": embeddings.get, "llm": llm.get}.get(component)
+    factory = {"embeddings": embeddings.get, "llm": llm.get, "reranker": reranker.get}.get(component)
     if not factory:
         raise HTTPException(404, "unknown component")
     cfg = _draft_config(body)
     try:
-        return {"ok": True, "models": sorted(set(factory(cfg).models()))}
+        provider = factory(cfg)  # None for a reranker that's off
+        return {"ok": True, "models": sorted(set(provider.models())) if provider else []}
     except Exception as e:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
