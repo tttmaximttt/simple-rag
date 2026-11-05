@@ -44,15 +44,34 @@ def load_config(name: str) -> dict:
 
 
 class CountingLLM:
-    """Wraps the configured LLM to count complete() calls."""
+    """Wraps the configured LLM to count complete() calls and record the ones that fail. rag.rewrite swallows a
+    failure and searches with the question alone, which would quietly turn a rewrite run into a no-rewrite one."""
     calls = 0
+    failures: list[str] = []
 
     def __init__(self, inner):
         self.inner = inner
 
     def complete(self, system, user):
         CountingLLM.calls += 1
-        return self.inner.complete(system, user)
+        try:
+            reply = self.inner.complete(system, user)
+        except Exception as e:
+            CountingLLM.failures.append(f"{type(e).__name__}: {e}")
+            raise
+        if not isinstance(reply, str) or not reply.strip():
+            CountingLLM.failures.append(f"empty reply {reply!r}")
+        return reply
+
+    @classmethod
+    def reset(cls):
+        cls.calls, cls.failures = 0, []
+
+    @classmethod
+    def check(cls, qid: str):
+        """Stop the run at the first failed call, with its error: the event log goes with the temporary DATA_DIR."""
+        if cls.failures:
+            raise SystemExit(f"LLM call failed for {qid}, so the results would mix configs: {cls.failures[0]}")
 
     def __getattr__(self, name):
         return getattr(self.inner, name)
@@ -127,19 +146,15 @@ def run(args, overrides, settings, work: Path) -> dict:
         rag.search("warm-up", K, rewrite_question=False)  # loads a local embedding model outside the timings
         rows = []
         for q in questions:
-            CountingLLM.calls = 0
+            CountingLLM.reset()
             t0 = time.perf_counter()
             _, queries, hits = rag.search(q["question"], K, rewrite_question=rewrite)
             ms = (time.perf_counter() - t0) * 1000
+            CountingLLM.check(q["id"])
             ranking = [(h["filename"], h["page"]) for h in hits]
             rows.append({"id": q["id"], "tags": q.get("tags", []), "rank": metrics.first_hit(ranking, q["doc"], q["pages"]),
                          "latency_ms": round(ms, 1), "llm_calls": CountingLLM.calls, "queries": queries,
                          "top": [f"{d} p{p}" for d, p in ranking[:5]]})
-        if rewrite and not any(r["queries"] for r in rows):
-            # rag.rewrite falls back to the question alone when the LLM call fails, which would silently
-            # produce a copy of the no-rewrite results.
-            raise SystemExit("The query rewrite returned no queries for any question: check the LLM settings "
-                             "(the app's event log has the error)")
         answers = _answers(questions, cfg, rag, llm, dataset, metrics) if args.answers else None
     finally:
         llm.get = real_get
@@ -193,10 +208,11 @@ def _answers(questions, cfg, rag, llm, dataset, metrics) -> dict:
     judge = llm.get(cfg)
     rows = []
     for q in questions:
-        CountingLLM.calls = 0
+        CountingLLM.reset()
         t0 = time.perf_counter()
         r = rag.answer(q["question"])
         ms = (time.perf_counter() - t0) * 1000
+        CountingLLM.check(q["id"])
         calls = CountingLLM.calls
         # The judge sees what the answering model saw (the merged chunks); quotes are checked against the whole
         # cited page.
@@ -228,9 +244,13 @@ def _drop(store):
 
 
 def _commit() -> str | None:
+    """HEAD, with "-dirty" when tracked files have uncommitted changes, so a result that checking out its commit
+    can't reproduce says so."""
+    def git(*a):
+        return subprocess.run(["git", *a], cwd=HERE, capture_output=True, text=True, check=True).stdout.strip()
     try:
-        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=HERE, capture_output=True, text=True,
-                              check=True).stdout.strip() or None
+        head = git("rev-parse", "--short", "HEAD")
+        return head and head + ("-dirty" if git("status", "--porcelain", "--untracked-files=no") else "")
     except (OSError, subprocess.CalledProcessError):
         return None
 

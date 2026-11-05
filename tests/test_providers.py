@@ -70,6 +70,22 @@ def test_anthropic_other_400s_are_not_retried(monkeypatch):
     assert calls == [1]
 
 
+@pytest.mark.parametrize("make, url, message", [
+    (lambda: llm.AnthropicLLM("k", "claude-sonnet-5-5", 1.5), "https://api.anthropic.com/v1/messages",
+     "temperature: range: 0..1"),
+    (lambda: llm.OpenAILLM("k", "gpt-4o", "https://api.openai.com/v1", 3.0), "https://api.openai.com/v1",
+     "Invalid 'temperature': decimal above maximum value. Expected a value <= 2, but got 3 instead."),
+])
+def test_out_of_range_temperature_is_reported_not_dropped(monkeypatch, make, url, message):
+    monkeypatch.setattr(llm, "_DEFAULT_TEMPERATURE_ONLY", set())
+    calls = []
+    monkeypatch.setattr(llm.httpx, "post", lambda u, json, **kw: calls.append(1) or httpx.Response(
+        400, json={"error": {"message": message}}, request=httpx.Request("POST", url)))
+    with pytest.raises(httpx.HTTPStatusError, match="temperature"):
+        make().complete("s", "u")
+    assert calls == [1] and llm._DEFAULT_TEMPERATURE_ONLY == set()
+
+
 def test_other_400s_are_not_retried(monkeypatch):
     monkeypatch.setattr(llm, "_DEFAULT_TEMPERATURE_ONLY", set())
     calls = []

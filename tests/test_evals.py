@@ -132,3 +132,29 @@ def test_run_refuses_to_start_with_the_app_already_imported(tmp_path):
         run.main(["--config", "vector", "--settings", str(settings)])
     with pytest.raises(SystemExit):
         run.main(["--config", "vector", "--settings", str(settings), "--limit", "0"])
+
+
+def test_counting_llm_stops_the_run_on_a_failed_call():
+    class Broken:
+        def complete(self, system, user):
+            raise RuntimeError("HTTP 400: `temperature` is deprecated for this model.")
+
+    run.CountingLLM.reset()
+    run.CountingLLM.check("q-0")  # nothing failed yet
+    with pytest.raises(RuntimeError):
+        run.CountingLLM(Broken()).complete("s", "u")
+    with pytest.raises(SystemExit, match="q-1.*temperature` is deprecated"):
+        run.CountingLLM.check("q-1")
+    run.CountingLLM.reset()
+
+
+def test_counting_llm_treats_an_empty_reply_as_a_failure():
+    class Empty:
+        def complete(self, system, user):
+            return "  "
+
+    run.CountingLLM.reset()
+    assert run.CountingLLM(Empty()).complete("s", "u") == "  "
+    with pytest.raises(SystemExit, match="empty reply"):
+        run.CountingLLM.check("q-2")
+    run.CountingLLM.reset()
