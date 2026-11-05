@@ -17,6 +17,7 @@ is dropped afterwards unless --keep is given, so the app's own documents and set
 Results go to evals/results/<date>-<config>.json and .md. Nothing is written if a step fails.
 """
 import argparse
+import copy
 import json
 import os
 import shutil
@@ -32,13 +33,6 @@ HERE = Path(__file__).parent
 CONFIGS = HERE / "configs"
 RESULTS = HERE / "results"
 K = 10
-
-
-def _merge(base: dict, override: dict) -> dict:
-    out = dict(base)
-    for k, v in override.items():
-        out[k] = _merge(base[k], v) if isinstance(v, dict) and isinstance(base.get(k), dict) else v
-    return out
 
 
 def load_config(name: str) -> dict:
@@ -74,6 +68,11 @@ def main(argv=None):
     ap.add_argument("--keep", action="store_true", help="keep the eval collection and temporary DATA_DIR")
     ap.add_argument("--out", type=Path, default=RESULTS, help="results folder (default: evals/results)")
     args = ap.parse_args(argv)
+    if args.limit is not None and args.limit < 1:
+        ap.error("--limit must be at least 1")
+    if "app.config" in sys.modules:
+        # DATA_DIR is read when app.config is imported: running now would use the app's real data folder.
+        raise SystemExit("evals.run must start in a fresh process (app is already imported)")
 
     if not args.settings.exists():
         raise SystemExit(f"Settings file {args.settings} not found: pass --settings with a RAG Studio config.json")
@@ -93,6 +92,8 @@ def main(argv=None):
             print(f"kept {work}")
     stem = f"{date.today().isoformat()}-{args.config}"
     args.out.mkdir(parents=True, exist_ok=True)
+    if (args.out / f"{stem}.json").exists():  # a second run the same day mustn't replace the first
+        stem += time.strftime("-%H%M%S")
     (args.out / f"{stem}.json").write_text(json.dumps(result, indent=2, ensure_ascii=False) + "\n")
     (args.out / f"{stem}.md").write_text(markdown(result))
     print(markdown(result))
@@ -105,9 +106,11 @@ def run(args, overrides, settings, work: Path) -> dict:
     from . import dataset, metrics
 
     everything = dataset.load()
-    questions = everything[:args.limit] if args.limit else everything
+    questions = everything[:args.limit] if args.limit is not None else everything
     stamp = time.strftime("%Y%m%d%H%M%S")
-    cfg = _merge(config.DEFAULTS, _merge(settings, {k: v for k, v in overrides.items() if k != "description"}))
+    # The app's own merge, so the eval sees the same effective settings; a copy, so DEFAULTS stays untouched.
+    cfg = config._merge(copy.deepcopy(config.DEFAULTS),
+                        config._merge(settings, {k: v for k, v in overrides.items() if k != "description"}))
     cfg["configured"] = True
     cfg["vector_store"]["collection"] = f"eval_{args.config.replace('-', '_')}_{stamp}"
     cfg["vector_store"]["chroma"]["path"] = str(work / "chroma")  # a relative or container path won't do here
@@ -190,9 +193,11 @@ def _answers(questions, cfg, rag, llm, dataset, metrics) -> dict:
         r = rag.answer(q["question"])
         ms = (time.perf_counter() - t0) * 1000
         calls = CountingLLM.calls
-        pages = [(h["filename"], h["page"], dataset.page_texts(h["filename"])[h["page"] - 1]) for h in r["sources"]]
-        verdict = metrics.parse_judgement(judge.complete(metrics.JUDGE_PROMPT, metrics.judge_input(r["answer"], pages)))
-        cites = metrics.citations(r["answer"], [text for _, _, text in pages])
+        # The judge sees what the answering model saw (the merged chunks); quotes are checked against the whole
+        # cited page.
+        seen = [(h["filename"], h["page"], h["text"]) for h in r["sources"]]
+        verdict = metrics.parse_judgement(judge.complete(metrics.JUDGE_PROMPT, metrics.judge_input(r["answer"], seen)))
+        cites = metrics.citations(r["answer"], [dataset.page_texts(h["filename"])[h["page"] - 1] for h in r["sources"]])
         rows.append({"text": r["answer"], "latency_ms": round(ms, 1), "llm_calls": calls,
                      "supported": verdict[0] if verdict else None, "claims": verdict[1] if verdict else None,
                      "citations": cites})

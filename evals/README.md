@@ -19,7 +19,8 @@ like `postgres:5432` has to be reachable from where you run the eval, so either 
 or edit the copy to point at `localhost`.
 
 Results are written to `results/<date>-<config>.json`, with every question's rank, latency and top pages, and to a
-Markdown table beside it (`results/<date>-<config>.md`).
+Markdown table beside it (`results/<date>-<config>.md`). A second run of the same config on the same day
+adds the time to the name instead of replacing the first.
 
 ## What is measured
 
@@ -37,10 +38,11 @@ Every number is also broken down by tag: `exact` (codes, numbers and names such 
 With `--answers`, each question is also answered by `rag.answer` (the app's prompt and `top_k`) and scored:
 
 - **Faithfulness**: the share of the answer's claims that the retrieved pages support. The configured LLM
-  judges this with the fixed prompt `JUDGE_PROMPT` in `metrics.py`, and it sees the full text of each
-  retrieved page. The score is supported claims divided by all claims across the run. Answers whose judgement
+  judges this with the fixed prompt `JUDGE_PROMPT` in `metrics.py`, and it sees exactly the passages the
+  answering model was given. The score is supported claims divided by all claims across the run. Answers whose judgement
   can't be parsed are counted as `judge_failures` and left out.
-- **Citation validity**: the share of `[n]` markers that point at a source that exists.
+- **Citation validity**: the share of cited source numbers that exist. Grouped markers such as `[1, 3]` or `[2-4]`
+  count each number.
 - **Citation accuracy**: the share of quoted passages cited as `"…" [n]` that really appear on page n,
   ignoring case and spacing. The app's prompt doesn't ask for quotes, so `cited_quotes` shows how many there were
   to check, and the accuracy is `n/a` when there were none.

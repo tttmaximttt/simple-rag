@@ -57,8 +57,9 @@ def _round(x):
 # --- answers ----------------------------------------------------------------------------------------------
 
 # A quoted span directly followed by a citation: "..." [2], “...” [2] or «...» [2].
-_QUOTE_CITED = re.compile(r"[\"“«]([^\"”»]{8,}?)[\"”»]\s*[.,;:]?\s*\[(\d+)\]")
-_CITATION = re.compile(r"\[(\d+)\]")
+_QUOTE_CITED = re.compile(r"[\"“«]([^\"”»]{8,}?)[\"”»]\s*[.,;:]?\s*\[(\d+)[^\]]*\]")
+# [2], and grouped markers such as [1, 3] or [2-4].
+_CITATION = re.compile(r"\[(\d+(?:\s*[,–-]\s*\d+)*)\]")
 
 
 def citations(answer: str, sources: list[str]) -> dict:
@@ -66,11 +67,21 @@ def citations(answer: str, sources: list[str]) -> dict:
 
     valid: citations that point at a source that exists. Quotes: spans in quotation marks cited as [n];
     found is how many of them really are on the cited page (ignoring case and spacing)."""
-    cited = [int(n) for n in _CITATION.findall(answer or "")]
+    cited = [n for group in _CITATION.findall(answer or "") for n in _numbers(group)]
     quotes = [(q, int(n)) for q, n in _QUOTE_CITED.findall(answer or "")]
     found = sum(1 for q, n in quotes if 1 <= n <= len(sources) and normalize(q) in normalize(sources[n - 1]))
     return {"citations": len(cited), "valid": sum(1 for n in cited if 1 <= n <= len(sources)),
             "quotes": len(quotes), "quotes_found": found}
+
+
+def _numbers(group: str) -> list[int]:
+    """The source numbers in one marker: "2" -> [2], "1, 3" -> [1, 3], "2-4" -> [2, 3, 4]."""
+    out = []
+    for part in group.split(","):
+        lo, _, hi = part.replace("–", "-").partition("-")
+        lo, hi = int(lo), int(hi or lo)
+        out += range(lo, hi + 1) if lo <= hi <= lo + 50 else [lo]
+    return out
 
 
 JUDGE_PROMPT = (

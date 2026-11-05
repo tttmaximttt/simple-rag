@@ -64,6 +64,12 @@ def test_citations_accept_typographic_quotes_and_punctuation():
     assert metrics.citations("", []) == {"citations": 0, "valid": 0, "quotes": 0, "quotes_found": 0}
 
 
+def test_citations_count_grouped_markers():
+    c = metrics.citations('Both say so [1, 3], see [2-4] and [5–5]. "use 4 spaces per level" [2, 3]',
+                          ["a", "use 4 spaces per level", "c", "d"])
+    assert c == {"citations": 8, "valid": 7, "quotes": 1, "quotes_found": 1}  # 1,3 · 2,3,4 · 5 (no such source) · 2,3
+
+
 def test_parse_judgement():
     reply = 'Here you go:\n```json\n{"claims": [{"claim": "a", "supported": true}, {"claim": "b", "supported": false},' \
             ' {"claim": "c", "supported": "yes"}]}\n```'
@@ -116,3 +122,13 @@ def test_eval_configs_load():
     assert run.load_config("vector-rewrite")["rag"]["query_rewrite"] is True
     with pytest.raises(SystemExit):
         run.load_config("nope")
+
+
+def test_run_refuses_to_start_with_the_app_already_imported(tmp_path):
+    # tests/conftest.py imported app, so its DATA_DIR is fixed: the eval must not write into it.
+    settings = tmp_path / "config.json"
+    settings.write_text("{}")
+    with pytest.raises(SystemExit, match="fresh process"):
+        run.main(["--config", "vector", "--settings", str(settings)])
+    with pytest.raises(SystemExit):
+        run.main(["--config", "vector", "--settings", str(settings), "--limit", "0"])
