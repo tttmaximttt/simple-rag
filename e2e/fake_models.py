@@ -5,7 +5,7 @@
   POST /v1/chat/completions  "pong" for the health check; the question itself for a search-query
                              rewrite; otherwise an answer that quotes the first context passage, so
                              tests can check that retrieval fed the LLM
-  POST /v1/rerank            Cohere-style rerank: the share of the query's words each document has
+  POST /v1/rerank            Cohere-style rerank: the share of the query's longer words each document has
   GET  /files/<name>.pdf     a small PDF, for the URL import tests (404 for names starting "missing")
   GET  /health
 
@@ -33,8 +33,9 @@ def embed(text: str) -> list[float]:
 
 
 def rerank(query: str, document: str) -> float:
-    words = set(re.findall(r"[a-z0-9]+", query.lower()))
-    return len(words & set(re.findall(r"[a-z0-9]+", document.lower()))) / (len(words) or 1)
+    """The share of the query's words (longer than 3 letters, so "the" and "how" don't count) in the document."""
+    words = lambda text: {w for w in re.findall(r"[a-z0-9]+", text.lower()) if len(w) > 3}
+    return len(words(query) & words(document)) / (len(words(query)) or 1)
 
 
 def chat(messages: list[dict]) -> str:
