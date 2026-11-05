@@ -40,6 +40,36 @@ def test_retries_without_temperature_once_per_model(monkeypatch):
     assert sent == [True, False, False]
 
 
+def test_anthropic_retries_without_temperature_once_per_model(monkeypatch):
+    monkeypatch.setattr(llm, "_DEFAULT_TEMPERATURE_ONLY", set())
+    sent = []
+    areq = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+
+    def post(url, json, **kwargs):
+        sent.append("temperature" in json)
+        if "temperature" in json:
+            return httpx.Response(400, json={"type": "error", "error": {
+                "message": "`temperature` is deprecated for this model."}}, request=areq)
+        return httpx.Response(200, json={"content": [{"type": "text", "text": "ok"}]}, request=areq)
+
+    monkeypatch.setattr(llm.httpx, "post", post)
+    model = llm.AnthropicLLM("k", "claude-sonnet-5-5", 0.2)
+    assert model.complete("s", "u") == "ok"
+    assert model.complete("s", "u") == "ok"
+    assert sent == [True, False, False]
+
+
+def test_anthropic_other_400s_are_not_retried(monkeypatch):
+    monkeypatch.setattr(llm, "_DEFAULT_TEMPERATURE_ONLY", set())
+    calls = []
+    areq = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    monkeypatch.setattr(llm.httpx, "post", lambda url, json, **kw: calls.append(1) or httpx.Response(
+        400, json={"error": {"message": "prompt is too long"}}, request=areq))
+    with pytest.raises(httpx.HTTPStatusError, match="prompt is too long"):
+        llm.AnthropicLLM("k", "claude-sonnet-5-5", 0.2).complete("s", "u")
+    assert calls == [1]
+
+
 def test_other_400s_are_not_retried(monkeypatch):
     monkeypatch.setattr(llm, "_DEFAULT_TEMPERATURE_ONLY", set())
     calls = []

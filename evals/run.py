@@ -135,6 +135,11 @@ def run(args, overrides, settings, work: Path) -> dict:
             rows.append({"id": q["id"], "tags": q.get("tags", []), "rank": metrics.first_hit(ranking, q["doc"], q["pages"]),
                          "latency_ms": round(ms, 1), "llm_calls": CountingLLM.calls, "queries": queries,
                          "top": [f"{d} p{p}" for d, p in ranking[:5]]})
+        if rewrite and not any(r["queries"] for r in rows):
+            # rag.rewrite falls back to the question alone when the LLM call fails, which would silently
+            # produce a copy of the no-rewrite results.
+            raise SystemExit("The query rewrite returned no queries for any question: check the LLM settings "
+                             "(the app's event log has the error)")
         answers = _answers(questions, cfg, rag, llm, dataset, metrics) if args.answers else None
     finally:
         llm.get = real_get

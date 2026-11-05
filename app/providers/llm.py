@@ -9,12 +9,24 @@ class AnthropicLLM:
         self.api_key, self.model, self.temperature = api_key, model, temperature
 
     def complete(self, system, user):
-        r = post_with_retry("https://api.anthropic.com/v1/messages", timeout=180, headers={
-            "x-api-key": self.api_key, "anthropic-version": "2023-06-01"}, json={
-            "model": self.model, "max_tokens": 2048, "temperature": self.temperature,
-            "system": system, "messages": [{"role": "user", "content": user}]})
+        body = {"model": self.model, "max_tokens": 2048, "system": system,
+                "messages": [{"role": "user", "content": user}]}
+        key = ("anthropic", self.model)
+        r = None
+        if key not in _DEFAULT_TEMPERATURE_ONLY:
+            r = self._post({**body, "temperature": self.temperature})
+            # Newer Claude models reject temperature ("`temperature` is deprecated for this model").
+            if r.status_code == 400 and "temperature" in r.text:
+                _DEFAULT_TEMPERATURE_ONLY.add(key)
+                r = None
+        if r is None:
+            r = self._post(body)
         check(r)
         return "".join(b.get("text", "") for b in r.json()["content"])
+
+    def _post(self, body):
+        return post_with_retry("https://api.anthropic.com/v1/messages", timeout=180, headers={
+            "x-api-key": self.api_key, "anthropic-version": "2023-06-01"}, json=body)
 
     def models(self):
         r = check(httpx.get("https://api.anthropic.com/v1/models", params={"limit": 1000}, timeout=30, headers={
@@ -48,7 +60,7 @@ class OpenAILLM:
         return [i for i in openai_model_ids(self.base_url, self.headers) if not any(x in i for x in _NOT_CHAT)]
 
 
-_DEFAULT_TEMPERATURE_ONLY: set[tuple[str, str]] = set()  # (base_url, model) seen rejecting a temperature
+_DEFAULT_TEMPERATURE_ONLY: set[tuple[str, str]] = set()  # (base_url or "anthropic", model) seen rejecting one
 _NOT_CHAT = ("embed", "whisper", "tts", "dall-e", "moderation", "davinci", "babbage", "transcribe",
              "image", "audio", "realtime", "search", "sora", "instruct", "codex", "-pro")
 
