@@ -10,6 +10,7 @@ python -m evals.run --config hybrid --settings data/config.json            # vec
 python -m evals.run --config hybrid-rewrite --settings data/config.json    # hybrid with the query rewrite
 python -m evals.run --config vector --settings data/config.json --answers  # also score generated answers
 python -m evals.report                                                     # all results as one table, for the README
+python -m evals.compare results/<a>.json results/<b>.json                  # B minus A, paired, with CI and p-value
 python -m pytest tests/test_evals.py -q                                    # metric tests and label checks
 ```
 
@@ -37,6 +38,22 @@ adds the time to the name instead of replacing the first.
 
 Every number is also broken down by tag: `exact` (codes, numbers and names such as `a52082`, `dvfs=2`,
 `IEEE 802.3at-2009`) and `cross-language` (an English question whose answer is in the Spanish document).
+
+### Intervals and comparing configs
+
+Each metric is a mean of per-question values (hit@1, hit@5, reciprocal rank; stored on every question from this
+version on, and recomputed from the ranks for older files). `stats.py` resamples the questions with replacement 10,000
+times (seed 0) and takes the middle 95% of the resampled means as the interval: `ci95` in each summary, in brackets
+in `evals.report`. `evals.compare` pairs two runs question by question: it resamples the per-question differences, for
+the interval of the mean difference and a two-sided p-value (the resampled means shifted to centre on zero), and adds
+how many questions B wins and loses with the exact sign test. It refuses results whose dataset fingerprints
+(`dataset.sha256`, the questions and the PDFs) differ, and matches older files without one by question id.
+
+Pairing matters with 66 questions: each config's own interval is wide, so two configs' intervals overlap even when
+one wins on several questions and loses on none. Most questions are easy or hard for every config, so the differences
+vary much less than the scores, and the paired test sees a change the overlapping intervals hide. When only a few
+questions move, all in one direction, the bootstrap interval can exclude zero while its p is above 0.05; the sign test
+is exact there. The p-values are not corrected for the many slices and metrics compared.
 
 With `--answers`, each question is also answered by `rag.answer` (the app's prompt and `top_k`) and scored:
 

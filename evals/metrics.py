@@ -8,6 +8,7 @@ import json
 import math
 import re
 
+from . import stats
 from .dataset import normalize
 
 
@@ -47,6 +48,8 @@ def summarize(rows, ks=(1, 5, 10)) -> dict:
     out["latency_p50_ms"] = _round(percentile(latency, 50))
     out["latency_p95_ms"] = _round(percentile(latency, 95))
     out["llm_calls_per_query"] = round(sum(r["llm_calls"] for r in rows) / len(rows), 3) if rows else 0.0
+    if rows:  # 95% bootstrap intervals, evals/stats.py
+        out["ci95"] = {m: [round(lo, 4), round(hi, 4)] for m, (lo, hi) in stats.intervals(ranks).items()}
     return out
 
 

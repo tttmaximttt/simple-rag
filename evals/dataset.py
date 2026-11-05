@@ -10,6 +10,7 @@ Each line is one question:
   answer     optional reference answer, for reading the reports
   tags       "exact" (codes, numbers, names), "cross-language" (English question, Spanish document)
 """
+import hashlib
 import json
 import re
 from functools import lru_cache
@@ -26,6 +27,18 @@ def load(path: Path = DATASET) -> list[dict]:
     if len(set(ids)) != len(ids):
         raise ValueError(f"{path}: duplicate question ids")
     return items
+
+
+def fingerprint(path: Path = DATASET) -> str:
+    """sha256 of the dataset file and every PDF it refers to: two results with the same fingerprint asked the same
+    questions, with the same labels, over the same documents (a run with --limit asks only the first ones, which
+    evals.compare's question id check catches). The questions are hashed as parsed, not as bytes, so
+    a checkout with CRLF line endings gives the same fingerprint."""
+    items = load(path)
+    h = hashlib.sha256(json.dumps(items, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+    for doc in sorted({q["doc"] for q in items}):
+        h.update(doc.encode("utf-8") + b"\0" + (PDF_DIR / doc).read_bytes())
+    return h.hexdigest()
 
 
 def normalize(text: str) -> str:

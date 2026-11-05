@@ -8,7 +8,8 @@ with what the runs were measured on, taken from the files. The numbers are only 
 comes from the same commit and hardware, so a warning row says when they don't.
 
 Recall, MRR and p95 are computed from each question's rank and latency in the file, not read from its summary:
-the summary is rounded to four places, and rounding that again for display can be off by 0.1 point.
+the summary is rounded to four places, and rounding that again for display can be off by 0.1 point. Recall and
+MRR carry their 95% bootstrap interval (evals/stats.py), so files from before intervals were stored get them too.
 """
 import argparse
 import json
@@ -16,7 +17,8 @@ import sys
 from pathlib import Path
 
 from . import metrics as m
-from .run import RESULTS, _ms, _pct
+from . import stats
+from .run import RESULTS, _ci, _ms
 
 ORDER = ["vector", "vector-rewrite", "hybrid", "hybrid-rewrite", "hybrid-rerank", "hybrid-rerank-gpu"]
 COLUMNS = ["config", "Recall@1", "Recall@5", "MRR@10", "Recall@1 exact", "Recall@1 cross-language", "p95 latency"]
@@ -35,13 +37,14 @@ def load(folder: Path) -> tuple[list[dict], list[str]]:
 
 
 def scores(r: dict, tag: str | None = None) -> dict | None:
-    """Recall@1/5, MRR@10 and p95 latency over the result's questions, or those with `tag`; None if there are none."""
+    """Recall@1/5 and MRR@10 with their 95% intervals ("ci95"), and p95 latency, over the result's questions or
+    those with `tag`; None if there are none."""
     rows = [q for q in r["questions"] if tag is None or tag in q.get("tags", [])]
     if not rows:
         return None
     ranks = [q["rank"] for q in rows]
     return {"recall@1": m.recall_at(ranks, 1), "recall@5": m.recall_at(ranks, 5), "mrr@10": m.mrr_at(ranks, 10),
-            "latency_p95_ms": m.percentile([q["latency_ms"] for q in rows], 95)}
+            "latency_p95_ms": m.percentile([q["latency_ms"] for q in rows], 95), "ci95": stats.intervals(ranks)}
 
 
 def hardware(h: dict | None) -> str:
@@ -53,7 +56,7 @@ def hardware(h: dict | None) -> str:
 
 def _recall1(r: dict, tag: str) -> str:
     s = scores(r, tag)
-    return _pct(s["recall@1"]) if s else "n/a"
+    return _ci(s, "recall@1") if s else "n/a"
 
 
 def _values(results: list[dict], get) -> list[str]:
@@ -65,7 +68,7 @@ def table(results: list[dict], warnings=()) -> str:
     lines = ["| " + " | ".join(COLUMNS) + " |", "|" + "---|" * len(COLUMNS)]
     for r in results:
         s = scores(r)
-        lines.append(f"| {r['config']} | {_pct(s['recall@1'])} | {_pct(s['recall@5'])} | {s['mrr@10']:.3f} "
+        lines.append(f"| {r['config']} | {_ci(s, 'recall@1')} | {_ci(s, 'recall@5')} | {_ci(s, 'mrr@10')} "
                      f"| {_recall1(r, 'exact')} | {_recall1(r, 'cross-language')} | {_ms(s['latency_p95_ms'])} |")
     warnings = list(warnings)
     for what, get in [("commit", lambda r: r["commit"] or "unknown"),
@@ -85,6 +88,7 @@ def table(results: list[dict], warnings=()) -> str:
         "embeddings " + "; ".join(f"`{e}`" for e in _values(results, lambda r: r["setup"]["embeddings"])),
         "reranker " + ("; ".join(rerankers) or "none"),
         "; ".join(sizes),
+        "95% bootstrap intervals in brackets",
     ]
     return "\n".join(lines) + "\n\n" + " · ".join(facts) + "\n"
 

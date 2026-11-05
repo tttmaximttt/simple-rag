@@ -184,3 +184,29 @@ def test_results_are_written_as_utf8(tmp_path):
     assert md == run.markdown(result).encode("utf-8") and "·".encode("utf-8") in md
     assert js == (json.dumps(result, indent=2, ensure_ascii=False) + "\n").encode("utf-8")
     assert json.loads(js.decode("utf-8")) == result
+
+
+def test_summaries_carry_95_percent_intervals():
+    rows = [{"rank": r, "latency_ms": 1.0, "llm_calls": 0} for r in (1, 1, 3, None)]
+    s = metrics.summarize(rows)
+    assert set(s["ci95"]) == {"recall@1", "recall@5", "mrr@10"}
+    lo, hi = s["ci95"]["recall@1"]
+    assert lo <= s["recall@1"] <= hi
+    assert "ci95" not in metrics.summarize([])
+
+
+def test_markdown_shows_the_intervals_when_the_result_has_them():
+    m = {"recall@1": 0.621, "mrr@10": 0.7634, "ci95": {"recall@1": [0.5, 0.7424], "mrr@10": [0.6871, 0.8382]}}
+    assert run._ci(m, "recall@1") == "62.1% [50.0–74.2]"
+    assert run._ci(m, "mrr@10") == "0.763 [0.687–0.838]"
+    assert run._ci({"recall@5": 0.9}, "recall@5") == "90.0%"  # results written before intervals were stored
+
+
+def test_dataset_fingerprint_ignores_line_endings_but_not_labels(tmp_path):
+    lf = dataset.DATASET.read_text(encoding="utf-8")
+    crlf, relabeled = tmp_path / "crlf.jsonl", tmp_path / "relabeled.jsonl"
+    crlf.write_bytes(lf.replace("\n", "\r\n").encode("utf-8"))
+    first = json.loads(lf.splitlines()[0])
+    relabeled.write_text("\n".join([json.dumps({**first, "pages": first["pages"] + [99]}), *lf.splitlines()[1:]]),
+                         encoding="utf-8")
+    assert dataset.fingerprint(crlf) == dataset.fingerprint() != dataset.fingerprint(relabeled)
