@@ -259,6 +259,9 @@ def _draft_config(body: dict | None) -> dict:
             raise HTTPException(400, f"Unknown {section.replace('_', ' ')} {key}: {cfg[section][key]!r}")
     if cfg["reranker"]["provider"] not in ("off", "local", "api"):
         raise HTTPException(400, f"Unknown reranker provider: {cfg['reranker']['provider']!r}")
+    if cfg["reranker"]["local"].get("device") not in reranker.DEVICES:
+        raise HTTPException(400, f"Unknown reranker device {cfg['reranker']['local'].get('device')!r}: "
+                                 f"use one of {', '.join(reranker.DEVICES)}")
     top_n = cfg["reranker"].get("top_n")
     if not isinstance(top_n, int) or isinstance(top_n, bool) or not 1 <= top_n <= rag.MAX_RERANK:
         raise HTTPException(400, f"Reranker top N must be a whole number from 1 to {rag.MAX_RERANK}")

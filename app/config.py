@@ -36,7 +36,7 @@ DEFAULTS = {
     "reranker": {
         "provider": "off",  # off | local | api
         "top_n": 30,
-        "local": {"model": "BAAI/bge-reranker-v2-m3-int8"},
+        "local": {"model": "BAAI/bge-reranker-v2-m3-int8", "device": "cpu"},  # device: cpu | cuda
         "api": {"base_url": "https://api.cohere.com/v2", "api_key": "", "model": "rerank-v3.5"},
     },
     # query_rewrite: have the LLM turn each question into search queries in the documents' languages.

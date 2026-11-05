@@ -42,7 +42,8 @@ class OllamaEmbeddings:
 @lru_cache(maxsize=2)
 def _fastembed(model):
     from fastembed import TextEmbedding
-    return TextEmbedding(model_name=model)
+    # CPU explicitly: fastembed's default tries CUDA whenever its libraries load.
+    return TextEmbedding(model_name=model, providers=["CPUExecutionProvider"])
 
 
 class LocalEmbeddings:
